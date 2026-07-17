@@ -1,0 +1,28 @@
+{
+  "ModId": "GBFR.ExtraSigilSlots20.Reloaded",
+  "ModName": "20 Sigil Slots - Reloaded ImGui (ER 2.0.2)",
+  "ModAuthor": "Hiyajomaho-num9",
+  "ModVersion": "0.3.0-test7",
+  "ModDescription": "Direct battle-hook test build of the Reloaded-II-only 20-sigil selector. Every native Trait status whose character hash has a saved virtual selection reads slots 13-20 directly, without owner, SLOT, mission, or TLS authorization gates. No ReShade or Luma dependency.",
+  "ModDll": "GBFR.ExtraSigilSlots20.Reloaded.dll",
+  "ModIcon": "",
+  "ModR2RManagedDll32": "",
+  "ModR2RManagedDll64": "",
+  "ModNativeDll32": "",
+  "ModNativeDll64": "",
+  "Tags": [],
+  "CanUnload": false,
+  "HasExports": false,
+  "IsLibrary": false,
+  "ReleaseMetadataFileName": "GBFR.ExtraSigilSlots20.Reloaded.ReleaseMetadata.json",
+  "PluginData": {},
+  "IsUniversalMod": false,
+  "ModDependencies": [
+    "reloaded.sharedlib.hooks"
+  ],
+  "OptionalDependencies": [],
+  "SupportedAppId": [
+    "granblue_fantasy_relink.exe"
+  ],
+  "ProjectUrl": ""
+}
