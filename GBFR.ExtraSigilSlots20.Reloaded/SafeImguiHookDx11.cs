@@ -25,7 +25,6 @@ using Reloaded.Imgui.Hook;
 using Reloaded.Imgui.Hook.DirectX.Definitions;
 using Reloaded.Imgui.Hook.DirectX.Hooks;
 using Reloaded.Imgui.Hook.Implementations;
-using Reloaded.Imgui.Hook.Misc;
 using SharpDX.Direct3D11;
 using SharpDX.DXGI;
 using System.Runtime.CompilerServices;
@@ -37,10 +36,11 @@ using Device = SharpDX.Direct3D11.Device;
 namespace GBFR.ExtraSigilSlots20.Reloaded;
 
 /// <summary>
-/// DX11 ImGui backend which guarantees that managed exceptions never escape a
-/// native Present or ResizeBuffers callback. An exception crossing an
-/// UnmanagedCallersOnly boundary terminates the process before Mod.Render can
-/// recover it, which is why this guard must live at the graphics-hook boundary.
+/// Present-only DX11 ImGui backend. Render targets are created only for frames
+/// which contain UI draw data and are released before the original Present.
+/// This deliberately avoids a ResizeBuffers hook, because another managed hook
+/// in that chain can be an UnmanagedCallersOnly callback which cannot safely be
+/// invoked by Reloaded.Hooks from managed code on every Windows configuration.
 /// </summary>
 internal sealed unsafe class SafeImguiHookDx11 : IImguiHook
 {
@@ -58,14 +58,9 @@ internal sealed unsafe class SafeImguiHookDx11 : IImguiHook
 
     private readonly Action<string> _log;
     private IHook<DX11Hook.Present> _presentHook = null!;
-    private IHook<DX11Hook.ResizeBuffers> _resizeBuffersHook = null!;
-    private RenderTargetView? _renderTargetView;
     private bool _initialized;
-    private bool _needsDeviceObjectRebuild;
     private bool _presentRecursionLock;
-    private bool _resizeRecursionLock;
     private int _presentFailureCount;
-    private int _resizeFailureCount;
     private bool _disposed;
 
     internal SafeImguiHookDx11(Action<string> log)
@@ -85,127 +80,38 @@ internal sealed unsafe class SafeImguiHookDx11 : IImguiHook
 
     public void Initialize()
     {
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(SafeImguiHookDx11));
+
         long presentPointer =
             (long)DX11Hook.DXGIVTable[(int)IDXGISwapChain.Present].FunctionPointer;
-        long resizeBuffersPointer =
-            (long)DX11Hook.DXGIVTable[(int)IDXGISwapChain.ResizeBuffers].FunctionPointer;
 
         s_instance = this;
-        _presentHook = SDK.Hooks
-            .CreateHook<DX11Hook.Present>(
-                typeof(SafeImguiHookDx11),
-                nameof(PresentImplStatic),
-                presentPointer)
-            .Activate();
-        _resizeBuffersHook = SDK.Hooks
-            .CreateHook<DX11Hook.ResizeBuffers>(
-                typeof(SafeImguiHookDx11),
-                nameof(ResizeBuffersImplStatic),
-                resizeBuffersPointer)
-            .Activate();
-    }
-
-    private IntPtr ResizeBuffersImpl(
-        IntPtr swapChainPointer,
-        uint bufferCount,
-        uint width,
-        uint height,
-        Format newFormat,
-        uint swapChainFlags)
-    {
-        if (_resizeRecursionLock)
-        {
-            return InvokeOriginalResizeBuffers(
-                swapChainPointer,
-                bufferCount,
-                width,
-                height,
-                newFormat,
-                swapChainFlags);
-        }
-
-        _resizeRecursionLock = true;
         try
         {
-            bool belongsToGame;
+            _presentHook = SDK.Hooks
+                .CreateHook<DX11Hook.Present>(
+                    typeof(SafeImguiHookDx11),
+                    nameof(PresentImplStatic),
+                    presentPointer)
+                .Activate();
+            TryLog(
+                "DX11 Present-only backend enabled; " +
+                "frame-local render targets replace the ResizeBuffers hook.");
+        }
+        catch
+        {
             try
             {
-                var swapChain = new SwapChain(swapChainPointer);
-                belongsToGame = ImguiHook.CheckWindowHandle(
-                    swapChain.Description.OutputHandle);
+                _presentHook?.Disable();
             }
-            catch (Exception exception)
+            catch
             {
-                ReportFailure("ResizeBuffers preflight", exception, ref _resizeFailureCount);
-                return InvokeOriginalResizeBuffers(
-                    swapChainPointer,
-                    bufferCount,
-                    width,
-                    height,
-                    newFormat,
-                    swapChainFlags);
             }
-
-            if (!belongsToGame)
-            {
-                return InvokeOriginalResizeBuffers(
-                    swapChainPointer,
-                    bufferCount,
-                    width,
-                    height,
-                    newFormat,
-                    swapChainFlags);
-            }
-
-            try
-            {
-                PreResizeBuffers();
-            }
-            catch (Exception exception)
-            {
-                ReportFailure("ResizeBuffers cleanup", exception, ref _resizeFailureCount);
-            }
-
-            IntPtr result = InvokeOriginalResizeBuffers(
-                swapChainPointer,
-                bufferCount,
-                width,
-                height,
-                newFormat,
-                swapChainFlags);
-
-            if (Succeeded(result))
-            {
-                try
-                {
-                    EnsureRenderResources(swapChainPointer);
-                }
-                catch (Exception exception)
-                {
-                    ReportFailure("ResizeBuffers rebuild", exception, ref _resizeFailureCount);
-                }
-            }
-            return result;
+            if (ReferenceEquals(s_instance, this))
+                s_instance = null;
+            throw;
         }
-        catch (Exception exception)
-        {
-            ReportFailure("ResizeBuffers callback", exception, ref _resizeFailureCount);
-            return FailureResult;
-        }
-        finally
-        {
-            _resizeRecursionLock = false;
-        }
-    }
-
-    private void PreResizeBuffers()
-    {
-        DisposeRenderTarget();
-        if (!_initialized)
-            return;
-
-        _needsDeviceObjectRebuild = true;
-        ImGui.ImGuiImplDX11InvalidateDeviceObjects();
     }
 
     private IntPtr PresentImpl(IntPtr swapChainPointer, int syncInterval, PresentFlags flags)
@@ -218,6 +124,9 @@ internal sealed unsafe class SafeImguiHookDx11 : IImguiHook
         {
             try
             {
+                // The callback owns the native pointer. SharpDX's pointer
+                // constructor does not AddRef, so this borrowed wrapper must
+                // not be disposed (Dispose would release the game's object).
                 var swapChain = new SwapChain(swapChainPointer);
                 IntPtr windowHandle = swapChain.Description.OutputHandle;
                 if (!ImguiHook.CheckWindowHandle(windowHandle))
@@ -231,26 +140,24 @@ internal sealed unsafe class SafeImguiHookDx11 : IImguiHook
                         (void*)device.NativePointer,
                         (void*)device.ImmediateContext.NativePointer);
                     _initialized = true;
-                    _needsDeviceObjectRebuild = false;
                 }
 
-                EnsureRenderResources(swapChainPointer);
                 ImGui.ImGuiImplDX11NewFrame();
                 ImguiHook.NewFrame();
-                device.ImmediateContext.OutputMerger.SetRenderTargets(_renderTargetView);
                 using var drawData = ImGui.GetDrawData();
-                ImGui.ImGuiImplDX11RenderDrawData(drawData);
+                if (drawData.CmdListsCount > 0 && drawData.TotalVtxCount > 0)
+                    RenderFrame(swapChain, device, drawData);
             }
             catch (Exception exception)
             {
-                ReportFailure("Present overlay", exception, ref _presentFailureCount);
+                ReportFailure("Present overlay", exception);
             }
 
             return InvokeOriginalPresent(swapChainPointer, syncInterval, flags);
         }
         catch (Exception exception)
         {
-            ReportFailure("Present callback", exception, ref _presentFailureCount);
+            ReportFailure("Present callback", exception);
             return FailureResult;
         }
         finally
@@ -259,24 +166,31 @@ internal sealed unsafe class SafeImguiHookDx11 : IImguiHook
         }
     }
 
-    private void EnsureRenderResources(IntPtr swapChainPointer)
+    private static void RenderFrame(
+        SwapChain swapChain,
+        Device device,
+        ImDrawData drawData)
     {
-        if (!_initialized)
-            return;
-
-        if (_needsDeviceObjectRebuild)
-        {
-            ImGui.ImGuiImplDX11CreateDeviceObjects();
-            _needsDeviceObjectRebuild = false;
-        }
-
-        if (_renderTargetView is not null)
-            return;
-
-        var swapChain = new SwapChain(swapChainPointer);
-        using var device = swapChain.GetDevice<Device>();
         using var backBuffer = swapChain.GetBackBuffer<Texture2D>(0);
-        _renderTargetView = new RenderTargetView(device, backBuffer);
+        using var renderTarget = new RenderTargetView(device, backBuffer);
+        bool renderTargetBound = false;
+        try
+        {
+            device.ImmediateContext.OutputMerger.SetRenderTargets(renderTarget);
+            renderTargetBound = true;
+            ImGui.ImGuiImplDX11RenderDrawData(drawData);
+        }
+        finally
+        {
+            if (renderTargetBound)
+            {
+                // Present does not require an OM render target. Unbinding here
+                // releases the context's indirect back-buffer reference before
+                // the temporary RTV and texture wrappers are disposed.
+                device.ImmediateContext.OutputMerger.SetRenderTargets(
+                    (RenderTargetView)null!);
+            }
+        }
     }
 
     private IntPtr InvokeOriginalPresent(
@@ -293,50 +207,26 @@ internal sealed unsafe class SafeImguiHookDx11 : IImguiHook
         }
         catch (Exception exception)
         {
-            ReportFailure("original Present", exception, ref _presentFailureCount);
+            ReportFailure("original Present", exception);
             return FailureResult;
         }
     }
 
-    private IntPtr InvokeOriginalResizeBuffers(
-        IntPtr swapChainPointer,
-        uint bufferCount,
-        uint width,
-        uint height,
-        Format newFormat,
-        uint swapChainFlags)
+    private void ReportFailure(string stage, Exception exception)
     {
-        try
-        {
-            return _resizeBuffersHook.OriginalFunction.Value.Invoke(
-                swapChainPointer,
-                bufferCount,
-                width,
-                height,
-                newFormat,
-                swapChainFlags);
-        }
-        catch (Exception exception)
-        {
-            ReportFailure("original ResizeBuffers", exception, ref _resizeFailureCount);
-            return FailureResult;
-        }
-    }
-
-    private static bool Succeeded(IntPtr result) =>
-        unchecked((int)result.ToInt64()) >= 0;
-
-    private void ReportFailure(string stage, Exception exception, ref int counter)
-    {
-        int failureNumber = Interlocked.Increment(ref counter);
+        int failureNumber = Interlocked.Increment(ref _presentFailureCount);
         if (failureNumber > 3 && (failureNumber & (failureNumber - 1)) != 0)
             return;
+        TryLog(
+            $"DX11 {stage} failed (occurrence {failureNumber}); " +
+            $"the game callback was contained instead of crashing: {exception}");
+    }
 
+    private void TryLog(string message)
+    {
         try
         {
-            _log(
-                $"DX11 {stage} failed (occurrence {failureNumber}); " +
-                $"the game callback was contained instead of crashing: {exception}");
+            _log(message);
         }
         catch
         {
@@ -344,23 +234,16 @@ internal sealed unsafe class SafeImguiHookDx11 : IImguiHook
         }
     }
 
-    private void DisposeRenderTarget()
-    {
-        RenderTargetView? target = _renderTargetView;
-        _renderTargetView = null;
-        target?.Dispose();
-    }
-
     public void Disable()
     {
         _presentHook?.Disable();
-        _resizeBuffersHook?.Disable();
     }
 
     public void Enable()
     {
+        if (_disposed)
+            return;
         _presentHook?.Enable();
-        _resizeBuffersHook?.Enable();
     }
 
     public void Dispose()
@@ -375,58 +258,23 @@ internal sealed unsafe class SafeImguiHookDx11 : IImguiHook
         }
         catch (Exception exception)
         {
-            ReportFailure("hook disable", exception, ref _presentFailureCount);
+            ReportFailure("hook disable", exception);
         }
 
         try
         {
-            DisposeRenderTarget();
             if (_initialized)
                 ImGui.ImGuiImplDX11Shutdown();
         }
         catch (Exception exception)
         {
-            ReportFailure("shutdown", exception, ref _presentFailureCount);
+            ReportFailure("shutdown", exception);
         }
         finally
         {
             _initialized = false;
             if (ReferenceEquals(s_instance, this))
                 s_instance = null;
-        }
-    }
-
-    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
-    private static IntPtr ResizeBuffersImplStatic(
-        IntPtr swapChainPointer,
-        uint bufferCount,
-        uint width,
-        uint height,
-        Format newFormat,
-        uint swapChainFlags)
-    {
-        try
-        {
-            SafeImguiHookDx11? instance = s_instance;
-            return instance is null
-                ? FailureResult
-                : instance.ResizeBuffersImpl(
-                    swapChainPointer,
-                    bufferCount,
-                    width,
-                    height,
-                    newFormat,
-                    swapChainFlags);
-        }
-        catch (Exception exception)
-        {
-            SafeImguiHookDx11? instance = s_instance;
-            if (instance is not null)
-                instance.ReportFailure(
-                    "ResizeBuffers unmanaged boundary",
-                    exception,
-                    ref instance._resizeFailureCount);
-            return FailureResult;
         }
     }
 
@@ -446,11 +294,7 @@ internal sealed unsafe class SafeImguiHookDx11 : IImguiHook
         catch (Exception exception)
         {
             SafeImguiHookDx11? instance = s_instance;
-            if (instance is not null)
-                instance.ReportFailure(
-                    "Present unmanaged boundary",
-                    exception,
-                    ref instance._presentFailureCount);
+            instance?.ReportFailure("Present unmanaged boundary", exception);
             return FailureResult;
         }
     }
