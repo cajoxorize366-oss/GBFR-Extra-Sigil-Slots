@@ -30,6 +30,10 @@ Run from the repository root:
 powershell -ExecutionPolicy Bypass -File .\build-release.ps1
 ```
 
+The script defaults to `Release`, `x64`, and version `0.5.0`. These defaults can
+be overridden explicitly, for example with `-Configuration Debug` or
+`-Version 0.5.0-test`.
+
 The installable archive is generated at:
 
 ```text
@@ -37,3 +41,8 @@ dist\GBFR-Extra-Sigil-Slots-0.5.0.zip
 ```
 
 Extract the `GBFR.ExtraSigilSlots20.Reloaded` folder from the ZIP into Reloaded-II's `Mods` directory. The package includes a default `GBFR-ExtraSigilSlotsNumConfig.ini` next to the native DLL so the slot count can be edited immediately. Back up and restore your existing INI when updating if you want to keep its settings; rename a legacy `GBFR-ExtraSigilSlots20.ini` backup to the new filename before restoring it. The runtime-created `GBFR-ExtraSigilSlots20.presets.json` remains excluded so named presets are not overwritten.
+
+## Development
+
+- [Native architecture and refactor plan](docs/native-architecture.md)
+- [Smoke-test harnesses](tests/README.md)

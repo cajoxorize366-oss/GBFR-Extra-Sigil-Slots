@@ -87,7 +87,17 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp" />
+    <ClCompile Include="src\config_store.cpp" />
+    <ClCompile Include="src\dllmain.cpp" />
+    <ClCompile Include="src\exports.cpp" />
+    <ClCompile Include="src\input_capture.cpp" />
+    <ClCompile Include="src\inventory_store.cpp" />
+    <ClCompile Include="src\name_tables.cpp" />
+    <ClCompile Include="src\runtime.cpp" />
+    <ClCompile Include="src\runtime_state.cpp" />
+    <ClCompile Include="src\safe_game_access.cpp" />
+    <ClCompile Include="src\selection_store.cpp" />
+    <ClCompile Include="src\trait_hooks.cpp" />
     <ClCompile Include="third_party\safetyhook.cpp" />
     <ClCompile Include="third_party\Zydis.c">
       <CompileAs>CompileAsC</CompileAs>
@@ -97,6 +107,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="native_api.h" />
+    <ClInclude Include="native_internal.h" />
     <ClInclude Include="third_party\safetyhook.hpp" />
     <ClInclude Include="third_party\Zydis.h" />
   </ItemGroup>

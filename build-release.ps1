@@ -1,13 +1,22 @@
+[CmdletBinding()]
+param(
+    [ValidateSet('Debug', 'Release')]
+    [string]$Configuration = 'Release',
+    [ValidateSet('x64')]
+    [string]$Platform = 'x64',
+    [ValidatePattern('^[0-9A-Za-z][0-9A-Za-z._-]*$')]
+    [string]$Version = '0.5.0'
+)
+
 $ErrorActionPreference = 'Stop'
 
 $root = $PSScriptRoot
-$configuration = 'Release'
 $nativeProject = Join-Path $root 'GBFR.ExtraSigilSlots20.Native\GBFR.ExtraSigilSlots20.Native.vcxproj'
 $managedProject = Join-Path $root 'GBFR.ExtraSigilSlots20.Reloaded\GBFR.ExtraSigilSlots20.Reloaded.csproj'
-$managedOutput = Join-Path $root 'GBFR.ExtraSigilSlots20.Reloaded\bin\Release'
+$managedOutput = Join-Path $root "GBFR.ExtraSigilSlots20.Reloaded\bin\$Configuration"
 $distRoot = Join-Path $root 'dist'
 $packageDir = Join-Path $distRoot 'GBFR.ExtraSigilSlots20.Reloaded'
-$zipPath = Join-Path $distRoot 'GBFR-Extra-Sigil-Slots-0.5.0.zip'
+$zipPath = Join-Path $distRoot "GBFR-Extra-Sigil-Slots-$Version.zip"
 
 $msbuild = $null
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
@@ -34,15 +43,15 @@ if (-not $msbuild) {
 
 & $msbuild $nativeProject `
     /t:Rebuild `
-    /p:Configuration=$configuration `
-    /p:Platform=x64 `
+    /p:Configuration=$Configuration `
+    /p:Platform=$Platform `
     /m `
     /v:minimal
 if ($LASTEXITCODE -ne 0) {
     throw "Native build failed with exit code $LASTEXITCODE."
 }
 
-& dotnet build $managedProject -c $configuration --nologo
+& dotnet build $managedProject -c $Configuration --nologo
 if ($LASTEXITCODE -ne 0) {
     throw "Managed build failed with exit code $LASTEXITCODE."
 }
