@@ -1,9 +1,9 @@
 {
   "ModId": "GBFR.ExtraSigilSlots20.Reloaded",
-  "ModName": "20 Sigil Slots - Reloaded ImGui (ER 2.0.2)",
+  "ModName": "GBFR Extra Sigil Slots - Reloaded ImGui (ER 2.0.2)",
   "ModAuthor": "Hiyajomaho-num9",
-  "ModVersion": "0.4.1",
-  "ModDescription": "Reloaded-II-only 20-sigil selector for ER 2.0.2 with named multi-character presets, usage filters and safe ownership transfer, a compact bilingual UI, Chinese IME support, localized character names, F8 hotkey, and direct test7 battle injection. No ReShade or Luma dependency.",
+  "ModVersion": "0.5.0",
+  "ModDescription": "Reloaded-II-only configurable extra-sigil selector for ER 2.0.2 with 1-24 virtual slots, named multi-character presets, usage filters and safe ownership transfer, a compact bilingual UI, Chinese IME support, localized character names, and an F8 hotkey. No ReShade or Luma dependency.",
   "ModDll": "GBFR.ExtraSigilSlots20.Reloaded.dll",
   "ModIcon": "",
   "ModR2RManagedDll32": "",

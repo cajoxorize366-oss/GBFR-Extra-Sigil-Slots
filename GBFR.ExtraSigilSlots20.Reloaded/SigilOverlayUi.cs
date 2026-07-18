@@ -30,7 +30,7 @@ internal sealed unsafe partial class SigilOverlayUi : IDisposable
     private readonly ImVec4 _readOnlyColor = MakeVec4(1.0f, 0.8f, 0.2f, 1.0f);
 
     private NativeCore.RuntimeState _state;
-    private uint[] _selection = new uint[NativeCore.VirtualSlotCount];
+    private uint[] _selection = new uint[NativeCore.VirtualSlotCapacity];
     private uint _selectionCharacterHash;
     private bool _windowOpen;
     private bool _toggleWasDown;
@@ -89,8 +89,8 @@ internal sealed unsafe partial class SigilOverlayUi : IDisposable
         bool open = _windowOpen;
         if (!ImGui.Begin(
                 english
-                    ? "GBFR Extra Sigil Slots (12 + 8)##Reloaded"
-                    : "GBFR 20 因子槽（12 + 8）##Reloaded",
+                    ? "GBFR Extra Sigil Slots##Reloaded"
+                    : "GBFR 扩展因子槽##Reloaded",
                 ref open,
                 ImGuiWindowFlagsNoCollapse))
         {
@@ -122,6 +122,12 @@ internal sealed unsafe partial class SigilOverlayUi : IDisposable
                 ? canEdit ? "Current state: editable" : "Current state: read-only"
                 : canEdit ? "当前状态可修改" : "当前状态不可修改"
         );
+        ImGui.TextColored(
+            _readOnlyColor,
+            english
+                ? "The game does not support hot-updating sigils during battle. Thank you for understanding."
+                : "游戏不支持战斗状态热更新因子，请谅解"
+        );
 
         ImGui.Separator();
         DrawPresetBar(characterHash, canEdit, english);
@@ -152,7 +158,7 @@ internal sealed unsafe partial class SigilOverlayUi : IDisposable
         bool english,
         string pickerTitle)
     {
-        if (_pickerSlot < 0 || _pickerSlot >= NativeCore.VirtualSlotCount)
+        if (_pickerSlot < 0 || _pickerSlot >= ActiveVirtualSlotCount)
             return;
 
         if (!canEdit)
@@ -328,9 +334,13 @@ internal sealed unsafe partial class SigilOverlayUi : IDisposable
     {
         _selectionCharacterHash = characterHash;
         _selection = characterHash == 0
-            ? new uint[NativeCore.VirtualSlotCount]
+            ? new uint[NativeCore.VirtualSlotCapacity]
             : NativeCore.GetSelection(characterHash);
     }
+
+    private int ActiveVirtualSlotCount => _state.VirtualSlotCount is >= 1 and <= NativeCore.VirtualSlotCapacity
+        ? (int)_state.VirtualSlotCount
+        : NativeCore.DefaultVirtualSlotCount;
 
     private string GetSelectedLabel(uint slotId, bool english)
     {

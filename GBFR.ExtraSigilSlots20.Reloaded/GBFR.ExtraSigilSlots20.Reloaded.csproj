@@ -25,8 +25,8 @@
     <None Include="..\GBFR.ExtraSigilSlots20.Native\bin\$(Configuration)\GBFR.ExtraSigilSlots20.Native.dll"
           Link="GBFR.ExtraSigilSlots20.Native.dll"
           CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\GBFR.ExtraSigilSlots20.Native\GBFR-ExtraSigilSlots20.ini"
-          Link="GBFR-ExtraSigilSlots20.ini"
+    <None Include="..\GBFR.ExtraSigilSlots20.Native\GBFR-ExtraSigilSlotsNumConfig.ini"
+          Link="GBFR-ExtraSigilSlotsNumConfig.ini"
           CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\GBFR.ExtraSigilSlots20.Native\GBFR-ExtraSigilSlots20.names.en.tsv"
           Link="GBFR-ExtraSigilSlots20.names.en.tsv"

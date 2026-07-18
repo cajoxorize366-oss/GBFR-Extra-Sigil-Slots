@@ -10,8 +10,8 @@
 
 #define GBFR20_CALL __cdecl
 
-constexpr uint32_t GBFR20_ABI_VERSION = 7;
-constexpr uint32_t GBFR20_VIRTUAL_SLOT_COUNT = 8;
+constexpr uint32_t GBFR20_ABI_VERSION = 8;
+constexpr uint32_t GBFR20_VIRTUAL_SLOT_CAPACITY = 24;
 constexpr uint32_t GBFR20_OWNER_CHARACTER_CAPACITY = 4;
 constexpr uint32_t GBFR20_PRESET_CHARACTER_CAPACITY = 32;
 
@@ -49,7 +49,7 @@ struct GBFR20_InventoryItem
 struct GBFR20_PresetCharacterSelection
 {
    uint32_t character_hash;
-   uint32_t slots[GBFR20_VIRTUAL_SLOT_COUNT];
+   uint32_t slots[GBFR20_VIRTUAL_SLOT_CAPACITY];
 };
 
 struct GBFR20_PresetSlotResult
@@ -116,13 +116,15 @@ struct GBFR20_RuntimeState
    uint64_t owner_manager_address;
    uint32_t natural_bind_owner_key;
    uint64_t natural_bind_owner_status_address;
+   uint32_t virtual_slot_count;
+   uint32_t virtual_slot_capacity;
 };
 #pragma pack(pop)
 
 static_assert(sizeof(GBFR20_GemData) == 0x24);
-static_assert(sizeof(GBFR20_PresetCharacterSelection) == 36);
+static_assert(sizeof(GBFR20_PresetCharacterSelection) == 100);
 static_assert(sizeof(GBFR20_PresetSlotResult) == 20);
-static_assert(sizeof(GBFR20_RuntimeState) == 268);
+static_assert(sizeof(GBFR20_RuntimeState) == 276);
 
 GBFR20_API uint32_t GBFR20_CALL GBFR20_GetAbiVersion();
 GBFR20_API int32_t GBFR20_CALL GBFR20_Initialize();

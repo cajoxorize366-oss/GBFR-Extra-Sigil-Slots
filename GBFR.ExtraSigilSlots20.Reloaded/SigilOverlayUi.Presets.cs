@@ -52,7 +52,7 @@ internal sealed unsafe partial class SigilOverlayUi
     {
         bool requestPickerPopup = false;
         ImGui.BeginDisabled(!canEdit);
-        for (int index = 0; index < NativeCore.VirtualSlotCount; ++index)
+        for (int index = 0; index < ActiveVirtualSlotCount; ++index)
         {
             ImGui.PushID_Int(index);
             ImGui.Text($"{NativeSlotCount + index:00}");
@@ -341,7 +341,9 @@ internal sealed unsafe partial class SigilOverlayUi
         try
         {
             NativeCore.PresetApplySummary? summary =
-                NativeCore.ApplyPreset(_presetStore.GetSelections(preset));
+                NativeCore.ApplyPreset(
+                    _presetStore.GetSelections(preset),
+                    ActiveVirtualSlotCount);
             if (summary is null)
             {
                 SetPresetStatus(
@@ -663,7 +665,7 @@ internal sealed unsafe partial class SigilOverlayUi
         bool clearPresetReferences,
         bool english)
     {
-        if (_pickerSlot < 0 || _pickerSlot >= NativeCore.VirtualSlotCount)
+        if (_pickerSlot < 0 || _pickerSlot >= ActiveVirtualSlotCount)
             return false;
         int targetSlot = _pickerSlot;
         try
@@ -711,7 +713,7 @@ internal sealed unsafe partial class SigilOverlayUi
 
     private void ClearVirtualSlot(uint characterHash, int slot)
     {
-        if (slot < 0 || slot >= NativeCore.VirtualSlotCount)
+        if (slot < 0 || slot >= ActiveVirtualSlotCount)
             return;
         if (NativeCore.SetSelection(characterHash, slot, 0))
         {

@@ -5,7 +5,7 @@ namespace GBFR.ExtraSigilSlots20.Reloaded;
 
 internal sealed class SigilPresetStore
 {
-    private const int CurrentVersion = 1;
+    private const int CurrentVersion = 2;
     internal const int MaximumNameLength = 48;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -340,7 +340,7 @@ internal sealed class SigilPresetStore
 
     private static uint[] NormalizeSlots(uint[]? slots)
     {
-        uint[] normalized = new uint[NativeCore.VirtualSlotCount];
+        uint[] normalized = new uint[NativeCore.VirtualSlotCapacity];
         if (slots is not null)
             Array.Copy(slots, normalized, Math.Min(slots.Length, normalized.Length));
         return normalized;
@@ -377,7 +377,7 @@ internal sealed class SigilPresetStore
 
 internal sealed class PresetDocument
 {
-    public int Version { get; set; } = 1;
+    public int Version { get; set; } = 2;
     public List<SigilPreset> Presets { get; set; } = [];
 }
 
@@ -391,5 +391,5 @@ internal sealed class SigilPreset
 internal sealed class SigilPresetCharacter
 {
     public uint CharacterHash { get; set; }
-    public uint[] Slots { get; set; } = new uint[NativeCore.VirtualSlotCount];
+    public uint[] Slots { get; set; } = new uint[NativeCore.VirtualSlotCapacity];
 }

@@ -6,8 +6,9 @@ namespace GBFR.ExtraSigilSlots20.Reloaded;
 
 internal static unsafe class NativeCore
 {
-    internal const int AbiVersion = 7;
-    internal const int VirtualSlotCount = 8;
+    internal const int AbiVersion = 8;
+    internal const int DefaultVirtualSlotCount = 8;
+    internal const int VirtualSlotCapacity = 24;
     internal const int OwnerCharacterCapacity = 4;
     internal const int PresetCharacterCapacity = 32;
 
@@ -56,7 +57,7 @@ internal static unsafe class NativeCore
     internal struct PresetCharacterSelection
     {
         internal uint CharacterHash;
-        internal fixed uint Slots[VirtualSlotCount];
+        internal fixed uint Slots[VirtualSlotCapacity];
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -125,6 +126,8 @@ internal static unsafe class NativeCore
         internal ulong OwnerManagerAddress;
         internal uint NaturalBindOwnerKey;
         internal ulong NaturalBindOwnerStatusAddress;
+        internal uint VirtualSlotCount;
+        internal uint VirtualSlotCapacity;
     }
 
     internal sealed record InventoryView(
@@ -183,7 +186,9 @@ internal static unsafe class NativeCore
     {
         return NativeGetState(out state, (uint)sizeof(RuntimeState)) != 0 &&
             state.AbiVersion == AbiVersion &&
-            state.StructSize == sizeof(RuntimeState);
+            state.StructSize == sizeof(RuntimeState) &&
+            state.VirtualSlotCapacity == VirtualSlotCapacity &&
+            state.VirtualSlotCount is >= 1 and <= VirtualSlotCapacity;
     }
 
     internal static string GetRuntimeMessage()
@@ -242,10 +247,10 @@ internal static unsafe class NativeCore
 
     internal static uint[] GetSelection(uint characterHash)
     {
-        uint[] slots = new uint[VirtualSlotCount];
+        uint[] slots = new uint[VirtualSlotCapacity];
         fixed (uint* slotPointer = slots)
         {
-            if (NativeGetSelection(characterHash, slotPointer, VirtualSlotCount) == 0)
+            if (NativeGetSelection(characterHash, slotPointer, VirtualSlotCapacity) == 0)
                 Array.Clear(slots);
         }
         return slots;
@@ -257,10 +262,12 @@ internal static unsafe class NativeCore
     }
 
     internal static PresetApplySummary? ApplyPreset(
-        IReadOnlyDictionary<uint, uint[]> selections)
+        IReadOnlyDictionary<uint, uint[]> selections,
+        int virtualSlotCount)
     {
         if (selections.Count == 0 || selections.Count > PresetCharacterCapacity)
             return null;
+        virtualSlotCount = Math.Clamp(virtualSlotCount, 1, VirtualSlotCapacity);
 
         KeyValuePair<uint, uint[]>[] ordered = selections
             .OrderBy(pair => pair.Key)
@@ -272,7 +279,7 @@ internal static unsafe class NativeCore
             PresetCharacterSelection selection = default;
             selection.CharacterHash = ordered[index].Key;
             uint[] sourceSlots = ordered[index].Value;
-            for (int slot = 0; slot < VirtualSlotCount; ++slot)
+            for (int slot = 0; slot < VirtualSlotCapacity; ++slot)
             {
                 selection.Slots[slot] = slot < sourceSlots.Length
                     ? sourceSlots[slot]
@@ -282,7 +289,7 @@ internal static unsafe class NativeCore
         }
 
         PresetSlotResult[] results =
-            new PresetSlotResult[ordered.Length * VirtualSlotCount];
+            new PresetSlotResult[ordered.Length * virtualSlotCount];
         uint resultCount = 0;
         fixed (PresetCharacterSelection* selectionPointer = nativeSelections)
         fixed (PresetSlotResult* resultPointer = results)

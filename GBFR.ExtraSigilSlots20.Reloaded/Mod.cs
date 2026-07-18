@@ -201,7 +201,7 @@ public sealed class Mod : IMod
                 return;
 
             Log("Direct3D11 Reloaded ImGui frontend initialized; ReShade and Luma are not used by this mod.");
-            Log("Press F8 to open the 20-sigil selector.");
+            Log("Press F8 to open the extra-sigil selector.");
         }
         catch (Exception exception)
         {

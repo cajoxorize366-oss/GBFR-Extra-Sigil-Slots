@@ -58,10 +58,10 @@ constexpr uintptr_t kUiStateSourceGlobalRva = 0x07C4A1A8;
 constexpr uintptr_t kInputContextGlobalRva = 0x07032D30;
 
 constexpr int kNativeInternalSlotCount = 13;
-constexpr int kVirtualSlotCount = 8;
-constexpr int kExpandedInternalSlotCount = kNativeInternalSlotCount + kVirtualSlotCount;
+constexpr int kDefaultVirtualSlotCount = 8;
+constexpr int kVirtualSlotCapacity = 24;
 constexpr int kMainGemCapacity = 5100;
-constexpr int kCurrentSettingsVersion = 1;
+constexpr int kCurrentSettingsVersion = 2;
 constexpr uint32_t kExpectedCompatibilityMappingCount = 199;
 constexpr uintptr_t kMainGemArrayOffset = 0x25D0;
 constexpr uintptr_t kUiSelectedCharacterHashOffset = 0x5F0;
@@ -135,7 +135,7 @@ struct AuthorizedStatus
    uint32_t character_hash = 0;
    int32_t context_mode = -1;
    uint64_t generation = 0;
-   std::array<uint32_t, kVirtualSlotCount> slots{};
+   std::array<uint32_t, kVirtualSlotCapacity> slots{};
 };
 
 struct VirtualOwner
@@ -165,8 +165,8 @@ struct NaturalTraitBindFrame
    StatusIdentity identity{};
    uint32_t owner_thread_id = 0;
    uint64_t owner_tick_count = 0;
-   std::array<uint32_t, kVirtualSlotCount> slots{};
-   std::array<GemData, kVirtualSlotCount> gems{};
+   std::array<uint32_t, kVirtualSlotCapacity> slots{};
+   std::array<GemData, kVirtualSlotCapacity> gems{};
    uint32_t expected = 0;
    uint32_t injected = 0;
    int next_slot = kNativeInternalSlotCount;
@@ -177,7 +177,7 @@ struct NaturalContributionFrame
 {
    uintptr_t status = 0;
    StatusIdentity identity{};
-   std::array<uint32_t, kVirtualSlotCount> slots{};
+   std::array<uint32_t, kVirtualSlotCapacity> slots{};
    uint32_t expected = 0;
    uint32_t injected = 0;
    int next_slot = kNativeInternalSlotCount;
@@ -209,6 +209,7 @@ struct UiSettings
    bool show_equipped = false;
    bool auto_apply = true;
    std::string language = "zh-CN";
+   int virtual_slot_count = kDefaultVirtualSlotCount;
 };
 
 HMODULE g_module = nullptr;
@@ -235,7 +236,7 @@ SafetyHookInline g_direct_input_get_state_hook;
 SafetyHookInline g_direct_input_get_data_hook;
 
 std::shared_mutex g_selection_mutex;
-std::unordered_map<uint32_t, std::array<uint32_t, kVirtualSlotCount>> g_character_selections;
+std::unordered_map<uint32_t, std::array<uint32_t, kVirtualSlotCapacity>> g_character_selections;
 std::unordered_map<uint32_t, uint32_t> g_required_character_by_gem;
 std::unordered_map<uint32_t, VirtualOwner> g_virtual_owner_by_slot_id;
 
@@ -294,7 +295,7 @@ std::atomic_uint64_t g_claimed_apply_generation{0};
 std::atomic_uint32_t g_active_apply_thread_id{0};
 std::atomic_uint64_t g_active_apply_status{0};
 std::atomic_bool g_native_apply_call_active{false};
-std::array<std::atomic_uint32_t, kVirtualSlotCount> g_active_apply_slots{};
+std::array<std::atomic_uint32_t, kVirtualSlotCapacity> g_active_apply_slots{};
 std::atomic_uint32_t g_active_apply_expected_count{0};
 std::atomic_uint64_t g_last_apply_generation{0};
 std::atomic_uint32_t g_last_apply_character_hash{0};
@@ -345,6 +346,20 @@ XInputGetStateFn g_original_xinput_get_state = nullptr;
 
 UiSettings g_settings;
 std::mutex g_settings_mutex;
+std::atomic_int32_t g_virtual_slot_count{kDefaultVirtualSlotCount};
+
+int GetVirtualSlotCount() noexcept
+{
+   return std::clamp(
+      g_virtual_slot_count.load(std::memory_order_acquire),
+      1,
+      kVirtualSlotCapacity);
+}
+
+int GetExpandedInternalSlotCount() noexcept
+{
+   return kNativeInternalSlotCount + GetVirtualSlotCount();
+}
 std::shared_mutex g_name_table_mutex;
 std::unordered_map<uint32_t, std::string> g_sigil_names;
 std::unordered_map<uint32_t, std::string> g_trait_names;
@@ -907,7 +922,7 @@ void CommitAuthorizedStatus(
    uintptr_t status,
    const StatusIdentity& identity,
    uint64_t generation,
-   const std::array<uint32_t, kVirtualSlotCount>& slots)
+   const std::array<uint32_t, kVirtualSlotCapacity>& slots)
 {
    if (status == 0 || identity.character_hash == 0)
       return;
@@ -934,7 +949,7 @@ void CommitAuthorizedStatus(
 bool TryGetAuthorizedSelection(
    uintptr_t status,
    const StatusIdentity& identity,
-   std::array<uint32_t, kVirtualSlotCount>& slots)
+   std::array<uint32_t, kVirtualSlotCapacity>& slots)
 {
    std::shared_lock lock(g_authorization_mutex);
    const auto iterator = g_authorized_statuses.find(status);
@@ -951,7 +966,7 @@ bool TryGetAuthorizedSelection(
 bool HasMatchingAuthorizedSelection(
    uintptr_t status,
    const StatusIdentity& identity,
-   const std::array<uint32_t, kVirtualSlotCount>& slots)
+   const std::array<uint32_t, kVirtualSlotCapacity>& slots)
 {
    std::shared_lock lock(g_authorization_mutex);
    const auto iterator = g_authorized_statuses.find(status);
@@ -1591,6 +1606,31 @@ std::wstring ReadIniString(const wchar_t* section, const wchar_t* key, const wch
    return buffer.data();
 }
 
+std::wstring ReadIniStringDynamic(
+   const wchar_t* section,
+   const wchar_t* key,
+   const wchar_t* fallback)
+{
+   size_t capacity = 256;
+   while (capacity <= 65536)
+   {
+      std::vector<wchar_t> buffer(capacity, L'\0');
+      const DWORD copied = GetPrivateProfileStringW(
+         section,
+         key,
+         fallback,
+         buffer.data(),
+         static_cast<DWORD>(buffer.size()),
+         g_config_path.c_str());
+      if (copied < buffer.size() - 1)
+         return std::wstring(buffer.data(), copied);
+      capacity *= 2;
+   }
+   // Treat an overlong/truncated value as malformed instead of accepting a
+   // valid-looking prefix and overlooking junk beyond the buffer boundary.
+   return L"<invalid-overlong-value>";
+}
+
 void WriteIniInt(const wchar_t* section, const wchar_t* key, int value)
 {
    const std::wstring text = std::to_wstring(value);
@@ -1606,7 +1646,7 @@ std::wstring CharacterSectionName(uint32_t character_hash)
 
 void SaveCharacterSelection(uint32_t character_hash)
 {
-   std::array<uint32_t, kVirtualSlotCount> slots{};
+   std::array<uint32_t, kVirtualSlotCapacity> slots{};
    {
       std::shared_lock lock(g_selection_mutex);
       const auto iterator = g_character_selections.find(character_hash);
@@ -1616,7 +1656,8 @@ void SaveCharacterSelection(uint32_t character_hash)
 
    std::wostringstream stream;
    stream << std::uppercase << std::hex << std::setfill(L'0');
-   for (size_t index = 0; index < slots.size(); ++index)
+   const size_t active_slot_count = static_cast<size_t>(GetVirtualSlotCount());
+   for (size_t index = 0; index < active_slot_count; ++index)
    {
       if (index != 0)
          stream << L',';
@@ -1627,9 +1668,9 @@ void SaveCharacterSelection(uint32_t character_hash)
    WritePrivateProfileStringW(section.c_str(), L"Slots", value.c_str(), g_config_path.c_str());
 }
 
-std::array<uint32_t, kVirtualSlotCount> ParseSlots(std::wstring_view text)
+std::array<uint32_t, kVirtualSlotCapacity> ParseSlots(std::wstring_view text)
 {
-   std::array<uint32_t, kVirtualSlotCount> slots{};
+   std::array<uint32_t, kVirtualSlotCapacity> slots{};
    size_t slot_index = 0;
    size_t offset = 0;
    while (slot_index < slots.size() && offset <= text.size())
@@ -1646,6 +1687,54 @@ std::array<uint32_t, kVirtualSlotCount> ParseSlots(std::wstring_view text)
       offset = comma + 1;
    }
    return slots;
+}
+
+int ParseConfiguredVirtualSlotCount(std::wstring_view raw, bool& rewrite)
+{
+   const auto is_space = [](wchar_t character) {
+      return character == L' ' || character == L'\t' || character == L'\r' ||
+         character == L'\n' || character == L'\v' || character == L'\f';
+   };
+   size_t begin = 0;
+   while (begin < raw.size() && is_space(raw[begin]))
+      ++begin;
+   size_t end = raw.size();
+   while (end > begin && is_space(raw[end - 1]))
+      --end;
+   const std::wstring_view text = raw.substr(begin, end - begin);
+   if (text.empty())
+   {
+      rewrite = true;
+      return kDefaultVirtualSlotCount;
+   }
+
+   uint32_t value = 0;
+   bool exceeds_capacity = false;
+   for (const wchar_t character : text)
+   {
+      if (character < L'0' || character > L'9')
+      {
+         rewrite = true;
+         return kDefaultVirtualSlotCount;
+      }
+      if (exceeds_capacity)
+         continue;
+      const uint32_t digit = static_cast<uint32_t>(character - L'0');
+      if (value > static_cast<uint32_t>((kVirtualSlotCapacity - digit) / 10))
+      {
+         exceeds_capacity = true;
+         continue;
+      }
+      value = value * 10 + digit;
+      if (value > kVirtualSlotCapacity)
+         exceeds_capacity = true;
+   }
+
+   const int normalized = exceeds_capacity || value > kVirtualSlotCapacity
+      ? kVirtualSlotCapacity
+      : value == 0 ? 1 : static_cast<int>(value);
+   rewrite = text != std::to_wstring(normalized);
+   return normalized;
 }
 
 void LoadSettingsAndSelections()
@@ -1674,6 +1763,13 @@ void LoadSettingsAndSelections()
    const std::string configured_language =
       WideToUtf8(ReadIniString(L"Settings", L"Language", L"zh-CN"));
    settings.language = configured_language == "en" ? "en" : "zh-CN";
+   bool rewrite_virtual_slot_count = false;
+   settings.virtual_slot_count = ParseConfiguredVirtualSlotCount(
+      ReadIniStringDynamic(L"Settings", L"VirtualSlotCount", L""),
+      rewrite_virtual_slot_count);
+   if (rewrite_virtual_slot_count)
+      WriteIniInt(L"Settings", L"VirtualSlotCount", settings.virtual_slot_count);
+   g_virtual_slot_count.store(settings.virtual_slot_count, std::memory_order_release);
    {
       std::scoped_lock lock(g_settings_mutex);
       g_settings = std::move(settings);
@@ -1707,11 +1803,12 @@ void LoadSettingsAndSelections()
 
    std::unordered_set<uint32_t> claimed_slot_ids;
    std::unordered_set<uint32_t> changed_characters;
+   const int active_slot_count = GetVirtualSlotCount();
    g_virtual_owner_by_slot_id.clear();
    for (const uint32_t hash : character_hashes)
    {
       auto& slots = g_character_selections[hash];
-      for (int index = 0; index < kVirtualSlotCount; ++index)
+      for (int index = 0; index < active_slot_count; ++index)
       {
          uint32_t& slot_id = slots[static_cast<size_t>(index)];
          if (slot_id == 0)
@@ -1723,6 +1820,14 @@ void LoadSettingsAndSelections()
             continue;
          }
          g_virtual_owner_by_slot_id[slot_id] = {hash, index};
+      }
+      for (int index = active_slot_count; index < kVirtualSlotCapacity; ++index)
+      {
+         uint32_t& inactive_slot_id = slots[static_cast<size_t>(index)];
+         if (inactive_slot_id == 0)
+            continue;
+         inactive_slot_id = 0;
+         changed_characters.emplace(hash);
       }
    }
    lock.unlock();
@@ -1741,6 +1846,7 @@ void SaveUiSettings()
    WriteIniInt(L"Settings", L"ToggleKey", settings.toggle_key);
    WriteIniInt(L"Settings", L"ShowEquipped", settings.show_equipped ? 1 : 0);
    WriteIniInt(L"Settings", L"AutoApply", settings.auto_apply ? 1 : 0);
+   WriteIniInt(L"Settings", L"VirtualSlotCount", settings.virtual_slot_count);
    const std::wstring language(settings.language.begin(), settings.language.end());
    WritePrivateProfileStringW(L"Settings", L"Language", language.c_str(), g_config_path.c_str());
 }
@@ -1862,12 +1968,12 @@ std::string LookupName(
    return std::string(prefix) + ToUpperHex(hash);
 }
 
-std::array<uint32_t, kVirtualSlotCount> GetSelection(uint32_t character_hash)
+std::array<uint32_t, kVirtualSlotCapacity> GetSelection(uint32_t character_hash)
 {
    std::shared_lock lock(g_selection_mutex);
    const auto iterator = g_character_selections.find(character_hash);
    return iterator == g_character_selections.end()
-      ? std::array<uint32_t, kVirtualSlotCount>{}
+      ? std::array<uint32_t, kVirtualSlotCapacity>{}
       : iterator->second;
 }
 
@@ -1987,12 +2093,13 @@ void ProcessPendingHotApply()
       return;
    }
 
-   const std::array<uint32_t, kVirtualSlotCount> selection = GetSelection(character_hash);
+   const std::array<uint32_t, kVirtualSlotCapacity> selection = GetSelection(character_hash);
    uint32_t expected = 0;
+   const size_t active_slot_count = static_cast<size_t>(GetVirtualSlotCount());
    for (size_t index = 0; index < selection.size(); ++index)
    {
       g_active_apply_slots[index].store(selection[index], std::memory_order_release);
-      if (selection[index] != 0)
+      if (index < active_slot_count && selection[index] != 0)
          ++expected;
    }
    g_active_apply_expected_count.store(expected, std::memory_order_release);
@@ -2069,7 +2176,8 @@ void ProcessPendingHotApply()
 
 bool SetSelection(uint32_t character_hash, int virtual_slot, uint32_t inventory_slot_id)
 {
-   if (character_hash == 0 || virtual_slot < 0 || virtual_slot >= kVirtualSlotCount ||
+   if (character_hash == 0 || virtual_slot < 0 ||
+       virtual_slot >= GetVirtualSlotCount() ||
        !SafeCanEditCharacter(character_hash))
       return false;
 
@@ -2145,7 +2253,9 @@ bool ApplyPresetSelections(
        slot_results == nullptr || slot_result_count == nullptr)
       return false;
 
-   const uint32_t required_result_capacity = selection_count * kVirtualSlotCount;
+   const int active_slot_count = GetVirtualSlotCount();
+   const uint32_t required_result_capacity =
+      selection_count * static_cast<uint32_t>(active_slot_count);
    if (slot_result_capacity < required_result_capacity)
       return false;
 
@@ -2157,7 +2267,7 @@ bool ApplyPresetSelections(
    struct CandidateSelection
    {
       uint32_t character_hash = 0;
-      std::array<uint32_t, kVirtualSlotCount> slots{};
+      std::array<uint32_t, kVirtualSlotCapacity> slots{};
    };
 
    std::vector<CandidateSelection> candidates;
@@ -2176,7 +2286,7 @@ bool ApplyPresetSelections(
 
       CandidateSelection candidate{};
       candidate.character_hash = source_selection.character_hash;
-      for (int slot_index = 0; slot_index < kVirtualSlotCount; ++slot_index)
+      for (int slot_index = 0; slot_index < active_slot_count; ++slot_index)
       {
          const uint32_t requested_slot_id =
             source_selection.slots[static_cast<size_t>(slot_index)];
@@ -2269,7 +2379,7 @@ bool ApplyPresetSelections(
       for (const uint32_t character_hash : character_hashes)
       {
          auto& slots = next_selections[character_hash];
-         for (int slot_index = 0; slot_index < kVirtualSlotCount; ++slot_index)
+         for (int slot_index = 0; slot_index < active_slot_count; ++slot_index)
          {
             uint32_t& slot_id = slots[static_cast<size_t>(slot_index)];
             if (slot_id == 0)
@@ -2281,12 +2391,18 @@ bool ApplyPresetSelections(
             }
             rebuilt_owners[slot_id] = {character_hash, slot_index};
          }
+         for (int slot_index = active_slot_count;
+              slot_index < kVirtualSlotCapacity;
+              ++slot_index)
+         {
+            slots[static_cast<size_t>(slot_index)] = 0;
+         }
       }
 
       for (const auto& [character_hash, next_slots] : next_selections)
       {
          const auto previous = g_character_selections.find(character_hash);
-         const std::array<uint32_t, kVirtualSlotCount> empty{};
+         const std::array<uint32_t, kVirtualSlotCapacity> empty{};
          const auto& previous_slots = previous == g_character_selections.end()
             ? empty
             : previous->second;
@@ -2524,10 +2640,12 @@ void PublishNaturalBindDiagnostic(
 }
 
 uint32_t CountSelectedSlots(
-   const std::array<uint32_t, kVirtualSlotCount>& selection) noexcept
+   const std::array<uint32_t, kVirtualSlotCapacity>& selection) noexcept
 {
    return static_cast<uint32_t>(std::count_if(
-      selection.begin(), selection.end(), [](uint32_t slot_id) { return slot_id != 0; }));
+      selection.begin(),
+      selection.begin() + GetVirtualSlotCount(),
+      [](uint32_t slot_id) { return slot_id != 0; }));
 }
 
 bool IsExactOwnerStatus(
@@ -2580,11 +2698,12 @@ bool IsExactOwnerStatus(
 
 bool ValidateNaturalSelection(
    uint32_t character_hash,
-   const std::array<uint32_t, kVirtualSlotCount>& selection,
-   std::array<GemData, kVirtualSlotCount>& gems) noexcept
+   const std::array<uint32_t, kVirtualSlotCapacity>& selection,
+   std::array<GemData, kVirtualSlotCapacity>& gems) noexcept
 {
    gems = {};
-   for (size_t index = 0; index < selection.size(); ++index)
+   const size_t active_slot_count = static_cast<size_t>(GetVirtualSlotCount());
+   for (size_t index = 0; index < active_slot_count; ++index)
    {
       const uint32_t slot_id = selection[index];
       if (slot_id == 0)
@@ -2645,7 +2764,7 @@ bool BeginNaturalTraitBind(
       return false;
    }
 
-   std::array<GemData, kVirtualSlotCount> gems{};
+   std::array<GemData, kVirtualSlotCapacity> gems{};
    if (!ValidateNaturalSelection(identity.character_hash, selection, gems))
    {
       if (report_rejection)
@@ -2689,7 +2808,7 @@ bool IsNaturalTraitBindCurrent(
 void BeginNaturalContributionTracking(
    uintptr_t status,
    const StatusIdentity& identity,
-   const std::array<uint32_t, kVirtualSlotCount>& selection) noexcept
+   const std::array<uint32_t, kVirtualSlotCapacity>& selection) noexcept
 {
    g_tls_natural_contribution = {};
    const uint32_t expected = CountSelectedSlots(selection);
@@ -2757,7 +2876,7 @@ void TrackNaturalContributionResult(
    }
    ++g_tls_natural_contribution.next_slot;
 
-   if (slot_index != kExpandedInternalSlotCount - 1)
+   if (slot_index != GetExpandedInternalSlotCount() - 1)
       return;
 
    const uint32_t expected = g_tls_natural_contribution.expected;
@@ -2818,7 +2937,8 @@ uint8_t GetGemDataByIndexDetour(void* status, int slot_index, void* output)
       g_last_context_mode.store(identity.context_mode, std::memory_order_release);
    }
 
-   if (slot_index < kNativeInternalSlotCount || slot_index >= kExpandedInternalSlotCount)
+   const int expanded_slot_count = GetExpandedInternalSlotCount();
+   if (slot_index < kNativeInternalSlotCount || slot_index >= expanded_slot_count)
    {
       const uint8_t result = g_get_gem_hook.call<uint8_t>(status, slot_index, output);
       if (from_trait_apply_loop && slot_index == 0)
@@ -2840,7 +2960,7 @@ uint8_t GetGemDataByIndexDetour(void* status, int slot_index, void* output)
        g_pending_character_hash.load(std::memory_order_acquire) == identity.character_hash &&
        g_active_apply_status.load(std::memory_order_acquire) ==
            reinterpret_cast<uintptr_t>(status);
-   std::array<uint32_t, kVirtualSlotCount> selection{};
+   std::array<uint32_t, kVirtualSlotCapacity> selection{};
    if (tracks_pending_apply)
    {
       for (size_t index = 0; index < selection.size(); ++index)
@@ -2890,7 +3010,7 @@ uint8_t GetGemDataByIndexDetour(void* status, int slot_index, void* output)
    {
       if (copied)
          g_pending_injected_count.fetch_add(1, std::memory_order_acq_rel);
-      if (slot_index == kExpandedInternalSlotCount - 1)
+      if (slot_index == expanded_slot_count - 1)
       {
          const uint32_t expected =
             g_active_apply_expected_count.load(std::memory_order_acquire);
@@ -2926,7 +3046,7 @@ void OnTraitFetch(safetyhook::Context& context)
 {
    ActiveCallGuard active_call(g_active_mid_calls);
    if (context.r13 >= static_cast<uintptr_t>(kNativeInternalSlotCount) &&
-       context.r13 < static_cast<uintptr_t>(kExpandedInternalSlotCount))
+       context.r13 < static_cast<uintptr_t>(GetExpandedInternalSlotCount()))
       context.rip = g_image_base + kTraitFetchCallPathRva;
 }
 
@@ -3034,13 +3154,14 @@ uint64_t BuildLifecycleSignature(
    uint32_t character_hash,
    uintptr_t status,
    int32_t context_mode,
-   const std::array<uint32_t, kVirtualSlotCount>& slots)
+   const std::array<uint32_t, kVirtualSlotCapacity>& slots)
 {
    uint64_t signature = static_cast<uint64_t>(status) ^
       (static_cast<uint64_t>(character_hash) << 32) ^
       static_cast<uint32_t>(context_mode);
-   for (const uint32_t slot_id : slots)
-      signature = (signature ^ slot_id) * 0x9E3779B185EBCA87ull;
+   const size_t active_slot_count = static_cast<size_t>(GetVirtualSlotCount());
+   for (size_t index = 0; index < active_slot_count; ++index)
+      signature = (signature ^ slots[index]) * 0x9E3779B185EBCA87ull;
    return signature == 0 ? 1 : signature;
 }
 
@@ -3168,11 +3289,11 @@ void ShutdownHooks()
    {
       uint8_t apply_loop_limit = 0;
       if (ReadByte(g_image_base + kTraitApplyLoopLimitImmediateRva, apply_loop_limit) &&
-          apply_loop_limit == kExpandedInternalSlotCount)
+          apply_loop_limit == static_cast<uint8_t>(GetExpandedInternalSlotCount()))
          WriteByte(g_image_base + kTraitApplyLoopLimitImmediateRva, kNativeInternalSlotCount);
       uint8_t loop_limit = 0;
       if (ReadByte(g_image_base + kTraitCategoryLoopLimitImmediateRva, loop_limit) &&
-          loop_limit == kExpandedInternalSlotCount)
+          loop_limit == static_cast<uint8_t>(GetExpandedInternalSlotCount()))
          WriteByte(g_image_base + kTraitCategoryLoopLimitImmediateRva, kNativeInternalSlotCount);
    }
    g_status_owner_tick_hook.reset();
@@ -3202,7 +3323,7 @@ bool InstallHooks()
           kTraitCategoryLoopPreflight))
    {
       SetRuntimeMessage(
-         "Trait-loop preflight failed. Disable the old Reloaded-II 20-slot prototype and verify ER 2.0.2.",
+         "Trait-loop preflight failed. Disable the old Reloaded-II extra-slot prototype and verify ER 2.0.2.",
          true);
       return false;
    }
@@ -3247,10 +3368,12 @@ bool InstallHooks()
       return false;
    }
 
+   const uint8_t expanded_slot_count =
+      static_cast<uint8_t>(GetExpandedInternalSlotCount());
    if (!WriteByte(
-          g_image_base + kTraitApplyLoopLimitImmediateRva, kExpandedInternalSlotCount) ||
+          g_image_base + kTraitApplyLoopLimitImmediateRva, expanded_slot_count) ||
        !WriteByte(
-          g_image_base + kTraitCategoryLoopLimitImmediateRva, kExpandedInternalSlotCount))
+          g_image_base + kTraitCategoryLoopLimitImmediateRva, expanded_slot_count))
    {
       ShutdownHooks();
       SetRuntimeMessage("Failed to patch both native trait loop limits; changes were rolled back.", true);
@@ -3261,7 +3384,8 @@ bool InstallHooks()
 
    g_hooks_ready.store(true, std::memory_order_release);
    SetRuntimeMessage(
-         "Test7 ready: direct character-hash battle injection is enabled for all context-1 statuses.",
+      "Test7 ready with " + std::to_string(GetVirtualSlotCount()) +
+         " virtual slots: direct character-hash battle injection is enabled for all context-1 statuses.",
       false);
    return true;
 }
@@ -3280,7 +3404,8 @@ void Initialize()
    }
 
    g_module_directory = std::filesystem::path(module_path.data()).parent_path();
-   g_config_path = g_module_directory / L"GBFR-ExtraSigilSlots20.ini";
+   g_config_path =
+      g_module_directory / L"GBFR-ExtraSigilSlotsNumConfig.ini";
    g_compatibility_path =
       g_module_directory / L"GBFR-ExtraSigilSlots20.compatibility.tsv";
    LoadSettingsAndSelections();
@@ -3382,7 +3507,9 @@ void ConsumeApplyResult()
       break;
    case ApplyResultNativeTraitLoopMissing:
       SetRuntimeMessage(
-         prefix.str() + "A23CC0 returned without completing virtual trait slots 13 through 20.", true);
+         prefix.str() + "A23CC0 returned without completing virtual trait slots 13 through " +
+            std::to_string(GetExpandedInternalSlotCount() - 1) + ".",
+         true);
       break;
    case ApplyResultNotifierFailed:
       SetRuntimeMessage(
@@ -3539,6 +3666,8 @@ int32_t GBFR20_CALL GBFR20_GetState(GBFR20_RuntimeState* state, uint32_t state_s
       g_natural_bind_owner_key.load(std::memory_order_acquire);
    snapshot.natural_bind_owner_status_address =
       g_natural_bind_owner_status_address.load(std::memory_order_acquire);
+   snapshot.virtual_slot_count = static_cast<uint32_t>(GetVirtualSlotCount());
+   snapshot.virtual_slot_capacity = kVirtualSlotCapacity;
    std::memcpy(state, &snapshot, sizeof(snapshot));
    return 1;
 }
@@ -3610,7 +3739,7 @@ int32_t GBFR20_CALL GBFR20_GetSelection(
    uint32_t* slots,
    uint32_t slot_count)
 {
-   if (character_hash == 0 || slots == nullptr || slot_count < kVirtualSlotCount)
+   if (character_hash == 0 || slots == nullptr || slot_count < kVirtualSlotCapacity)
       return 0;
    const auto selection = GetSelection(character_hash);
    std::memcpy(slots, selection.data(), sizeof(selection));

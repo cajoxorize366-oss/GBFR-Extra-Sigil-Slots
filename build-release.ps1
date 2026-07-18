@@ -7,7 +7,7 @@ $managedProject = Join-Path $root 'GBFR.ExtraSigilSlots20.Reloaded\GBFR.ExtraSig
 $managedOutput = Join-Path $root 'GBFR.ExtraSigilSlots20.Reloaded\bin\Release'
 $distRoot = Join-Path $root 'dist'
 $packageDir = Join-Path $distRoot 'GBFR.ExtraSigilSlots20.Reloaded'
-$zipPath = Join-Path $distRoot 'GBFR-Extra-Sigil-Slots-0.4.1.zip'
+$zipPath = Join-Path $distRoot 'GBFR-Extra-Sigil-Slots-0.5.0.zip'
 
 $msbuild = $null
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
