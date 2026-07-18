@@ -6,7 +6,6 @@
 #include <bcrypt.h>
 #include <dinput.h>
 #include <intrin.h>
-#include <xinput.h>
 
 #include "native_api.h"
 #include "third_party/safetyhook.hpp"
@@ -16,7 +15,6 @@
 #include <atomic>
 #include <charconv>
 #include <cctype>
-#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -326,6 +324,7 @@ std::atomic_bool g_input_capture_effective{false};
 std::atomic_uint32_t g_input_neutral_frames{0};
 std::atomic_bool g_input_iat_hooks_ready{false};
 std::atomic_bool g_direct_input_hook_ready{false};
+std::atomic_uintptr_t g_direct_input_mouse_device{0};
 std::mutex g_input_hook_mutex;
 std::vector<IatPatch> g_iat_patches;
 POINT g_frozen_cursor_position{};
@@ -335,14 +334,12 @@ using GetKeyStateFn = SHORT(WINAPI*)(int);
 using GetCursorPosFn = BOOL(WINAPI*)(LPPOINT);
 using SetCursorPosFn = BOOL(WINAPI*)(int, int);
 using ClipCursorFn = BOOL(WINAPI*)(const RECT*);
-using XInputGetStateFn = DWORD(WINAPI*)(DWORD, XINPUT_STATE*);
 
 GetAsyncKeyStateFn g_original_get_async_key_state = nullptr;
 GetKeyStateFn g_original_get_key_state = nullptr;
 GetCursorPosFn g_original_get_cursor_pos = nullptr;
 SetCursorPosFn g_original_set_cursor_pos = nullptr;
 ClipCursorFn g_original_clip_cursor = nullptr;
-XInputGetStateFn g_original_xinput_get_state = nullptr;
 
 UiSettings g_settings;
 std::mutex g_settings_mutex;
@@ -1315,18 +1312,6 @@ BOOL WINAPI ClipCursorDetour(const RECT* rectangle)
    return g_original_clip_cursor != nullptr ? g_original_clip_cursor(rectangle) : FALSE;
 }
 
-DWORD WINAPI XInputGetStateDetour(DWORD user_index, XINPUT_STATE* state)
-{
-   ActiveCallGuard guard(g_active_input_calls);
-   if (g_original_xinput_get_state == nullptr)
-      return ERROR_DEVICE_NOT_CONNECTED;
-   const DWORD result = g_original_xinput_get_state(user_index, state);
-   if (result == ERROR_SUCCESS && state != nullptr &&
-       g_input_capture_effective.load(std::memory_order_acquire))
-      std::memset(&state->Gamepad, 0, sizeof(state->Gamepad));
-   return result;
-}
-
 HRESULT __fastcall DirectInputGetDeviceStateDetour(
    void* device,
    DWORD data_size,
@@ -1336,6 +1321,8 @@ HRESULT __fastcall DirectInputGetDeviceStateDetour(
    const HRESULT result = g_direct_input_get_state_hook.call<HRESULT>(
       device, data_size, data);
    if (SUCCEEDED(result) && data != nullptr && data_size != 0 &&
+       reinterpret_cast<uintptr_t>(device) ==
+          g_direct_input_mouse_device.load(std::memory_order_acquire) &&
        g_input_capture_effective.load(std::memory_order_acquire))
       std::memset(data, 0, data_size);
    return result;
@@ -1353,6 +1340,8 @@ HRESULT __fastcall DirectInputGetDeviceDataDetour(
    const HRESULT result = g_direct_input_get_data_hook.call<HRESULT>(
       device, object_data_size, object_data, object_count, flags);
    if (SUCCEEDED(result) && object_count != nullptr &&
+       reinterpret_cast<uintptr_t>(device) ==
+          g_direct_input_mouse_device.load(std::memory_order_acquire) &&
        g_input_capture_effective.load(std::memory_order_acquire))
    {
       if (object_data != nullptr && object_data_size != 0 && requested != 0)
@@ -1393,15 +1382,10 @@ bool InstallInputIatHooks()
       "USER32.dll", "ClipCursor", reinterpret_cast<void*>(&ClipCursorDetour), original) && succeeded;
    g_original_clip_cursor = reinterpret_cast<ClipCursorFn>(original);
 
-   original = nullptr;
-   succeeded = PatchMainModuleImport(
-      "XINPUT9_1_0.dll", "XInputGetState", reinterpret_cast<void*>(&XInputGetStateDetour), original) && succeeded;
-   g_original_xinput_get_state = reinterpret_cast<XInputGetStateFn>(original);
-
    g_input_iat_hooks_ready.store(succeeded, std::memory_order_release);
    Log(succeeded
-      ? "Game-local USER32 and XInput input gates installed."
-      : "One or more game-local USER32/XInput input gates failed to install.");
+      ? "Game-local keyboard and mouse USER32 input gates installed; controller input is passed through."
+      : "One or more game-local keyboard/mouse USER32 input gates failed to install.");
    return succeeded;
 }
 
@@ -1449,8 +1433,9 @@ void TryInstallDirectInputHooks()
       g_direct_input_get_state_hook.reset();
       return;
    }
+   g_direct_input_mouse_device.store(device, std::memory_order_release);
    g_direct_input_hook_ready.store(true, std::memory_order_release);
-   Log("Existing DirectInput mouse device state/data gates installed.");
+   Log("Existing DirectInput mouse device state/data gates installed; other devices are passed through.");
 }
 
 bool IsPhysicalInputNeutral()
@@ -1460,23 +1445,6 @@ bool IsPhysicalInputNeutral()
       for (int key = VK_BACK; key <= 0xFE; ++key)
          if ((g_original_get_async_key_state(key) & 0x8000) != 0)
             return false;
-   }
-   if (g_original_xinput_get_state != nullptr)
-   {
-      for (DWORD user = 0; user < XUSER_MAX_COUNT; ++user)
-      {
-         XINPUT_STATE state{};
-         if (g_original_xinput_get_state(user, &state) != ERROR_SUCCESS)
-            continue;
-         const XINPUT_GAMEPAD& pad = state.Gamepad;
-         if (pad.wButtons != 0 || pad.bLeftTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD ||
-             pad.bRightTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD ||
-             std::abs(static_cast<int>(pad.sThumbLX)) > XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE ||
-             std::abs(static_cast<int>(pad.sThumbLY)) > XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE ||
-             std::abs(static_cast<int>(pad.sThumbRX)) > XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE ||
-             std::abs(static_cast<int>(pad.sThumbRY)) > XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE)
-            return false;
-      }
    }
    return true;
 }
@@ -3303,6 +3271,7 @@ void ShutdownHooks()
    g_get_gem_hook.reset();
    g_direct_input_get_data_hook.reset();
    g_direct_input_get_state_hook.reset();
+   g_direct_input_mouse_device.store(0, std::memory_order_release);
    g_direct_input_hook_ready.store(false, std::memory_order_release);
    {
       std::unique_lock lock(g_authorization_mutex);

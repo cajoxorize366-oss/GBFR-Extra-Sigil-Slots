@@ -12,7 +12,7 @@ It does not call or depend on ReShade or Luma. The verified ReShade add-on remai
 
 Runtime split:
 
-- `GBFR.ExtraSigilSlots20.Reloaded.dll`: Reloaded-II lifecycle, Direct3D 11 ImGui UI, hotkey and input capture.
+- `GBFR.ExtraSigilSlots20.Reloaded.dll`: Reloaded-II lifecycle, Direct3D 11 ImGui UI, hotkey and keyboard/mouse capture with controller pass-through.
 - `GBFR.ExtraSigilSlots20.Native.dll`: ER 2.0.2 preflight, SafetyHook detours, inventory snapshot, per-character selections and same-thread native status rebuild.
 
 The native core exposes a fixed packed C ABI and never renders a UI. The managed frontend never reads or writes game memory itself.

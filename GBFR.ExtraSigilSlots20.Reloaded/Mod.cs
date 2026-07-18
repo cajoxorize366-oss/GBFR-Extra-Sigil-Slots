@@ -418,7 +418,8 @@ public sealed class Mod : IMod
                 if ((message == 0x0006 || message == 0x001C) && wParam == IntPtr.Zero)
                     return IntPtr.Zero;
             }
-            if (Volatile.Read(ref s_captureInput) != 0 && ShouldCaptureMessage(message))
+            if (Volatile.Read(ref s_captureInput) != 0 &&
+                ShouldCaptureMessage(message, lParam))
             {
                 if (message == 0x00FF)
                     Interlocked.Increment(ref s_capturedRawInputMessages);
@@ -426,6 +427,15 @@ public sealed class Mod : IMod
                     Interlocked.Increment(ref s_capturedMouseKeyboardMessages);
                 return IntPtr.Zero;
             }
+        }
+        catch
+        {
+            // Input classification is fail-open: preserve the game's own
+            // WndProc path if ImGui or Raw Input inspection fails.
+        }
+
+        try
+        {
             WndProcHook? hook = WndProcHook.Instance;
             if (hook is not null)
             {
@@ -741,7 +751,7 @@ public sealed class Mod : IMod
             codePage != 0;
     }
 
-    private static bool ShouldCaptureMessage(uint message)
+    private static bool ShouldCaptureMessage(uint message, IntPtr lParam)
     {
         const uint WmInput = 0x00FF;
         const uint WmNcMouseFirst = 0x00A0;
@@ -757,7 +767,7 @@ public sealed class Mod : IMod
         const uint WmPointerLast = 0x024F;
         const uint WmHotkey = 0x0312;
         const uint WmAppCommand = 0x0319;
-        return message == WmInput ||
+        return (message == WmInput && ShouldCaptureRawInput(lParam)) ||
             message is >= WmNcMouseFirst and <= WmNcMouseLast ||
             message is >= WmGestureFirst and <= WmGestureLast ||
             message is >= WmKeyFirst and <= WmKeyLast ||
@@ -768,12 +778,50 @@ public sealed class Mod : IMod
             message == WmAppCommand;
     }
 
+    private static bool ShouldCaptureRawInput(IntPtr rawInputHandle)
+    {
+        const uint RidHeader = 0x10000005;
+        if (rawInputHandle == IntPtr.Zero)
+            return false;
+
+        uint headerSize = (uint)Marshal.SizeOf<RawInputHeader>();
+        uint dataSize = headerSize;
+        uint copied = GetRawInputData(
+            rawInputHandle,
+            RidHeader,
+            out RawInputHeader header,
+            ref dataSize,
+            headerSize
+        );
+        return copied != uint.MaxValue && copied >= headerSize &&
+            IsKeyboardOrMouseRawInputType(header.Type);
+    }
+
+    private static bool IsKeyboardOrMouseRawInputType(uint type) => type is 0 or 1;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RawInputHeader
+    {
+        internal uint Type;
+        internal uint Size;
+        internal IntPtr Device;
+        internal IntPtr WParam;
+    }
+
     [DllImport("user32.dll")]
     private static extern IntPtr DefWindowProcW(
         IntPtr hWnd,
         uint message,
         IntPtr wParam,
         IntPtr lParam);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint GetRawInputData(
+        IntPtr rawInputHandle,
+        uint command,
+        out RawInputHeader data,
+        ref uint dataSize,
+        uint headerSize);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
