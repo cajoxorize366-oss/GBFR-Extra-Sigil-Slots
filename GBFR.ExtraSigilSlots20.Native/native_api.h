@@ -10,9 +10,18 @@
 
 #define GBFR20_CALL __cdecl
 
-constexpr uint32_t GBFR20_ABI_VERSION = 6;
+constexpr uint32_t GBFR20_ABI_VERSION = 7;
 constexpr uint32_t GBFR20_VIRTUAL_SLOT_COUNT = 8;
 constexpr uint32_t GBFR20_OWNER_CHARACTER_CAPACITY = 4;
+constexpr uint32_t GBFR20_PRESET_CHARACTER_CAPACITY = 32;
+
+constexpr int32_t GBFR20_PRESET_SLOT_EMPTY = 0;
+constexpr int32_t GBFR20_PRESET_SLOT_APPLIED = 1;
+constexpr int32_t GBFR20_PRESET_SLOT_MISSING = -1;
+constexpr int32_t GBFR20_PRESET_SLOT_EQUIPPED = -2;
+constexpr int32_t GBFR20_PRESET_SLOT_DISABLED = -3;
+constexpr int32_t GBFR20_PRESET_SLOT_CHARACTER_RESTRICTED = -4;
+constexpr int32_t GBFR20_PRESET_SLOT_DUPLICATE = -5;
 
 #pragma pack(push, 1)
 struct GBFR20_GemData
@@ -35,6 +44,21 @@ struct GBFR20_InventoryItem
    uint32_t required_character_hash;
    uint32_t virtual_owner_character_hash;
    int32_t virtual_owner_slot;
+};
+
+struct GBFR20_PresetCharacterSelection
+{
+   uint32_t character_hash;
+   uint32_t slots[GBFR20_VIRTUAL_SLOT_COUNT];
+};
+
+struct GBFR20_PresetSlotResult
+{
+   uint32_t character_hash;
+   int32_t virtual_slot;
+   uint32_t requested_slot_id;
+   uint32_t owner_character_hash;
+   int32_t status;
 };
 
 struct GBFR20_RuntimeState
@@ -96,6 +120,8 @@ struct GBFR20_RuntimeState
 #pragma pack(pop)
 
 static_assert(sizeof(GBFR20_GemData) == 0x24);
+static_assert(sizeof(GBFR20_PresetCharacterSelection) == 36);
+static_assert(sizeof(GBFR20_PresetSlotResult) == 20);
 static_assert(sizeof(GBFR20_RuntimeState) == 268);
 
 GBFR20_API uint32_t GBFR20_CALL GBFR20_GetAbiVersion();
@@ -124,6 +150,12 @@ GBFR20_API int32_t GBFR20_CALL GBFR20_SetSelection(
    uint32_t character_hash,
    int32_t virtual_slot,
    uint32_t inventory_slot_id);
+GBFR20_API int32_t GBFR20_CALL GBFR20_ApplyPreset(
+   const GBFR20_PresetCharacterSelection* selections,
+   uint32_t selection_count,
+   GBFR20_PresetSlotResult* slot_results,
+   uint32_t slot_result_capacity,
+   uint32_t* slot_result_count);
 GBFR20_API uint32_t GBFR20_CALL GBFR20_RequestApply(uint32_t character_hash);
 GBFR20_API int32_t GBFR20_CALL GBFR20_SetAutoApply(int32_t enabled);
 GBFR20_API int32_t GBFR20_CALL GBFR20_SetShowEquipped(int32_t enabled);

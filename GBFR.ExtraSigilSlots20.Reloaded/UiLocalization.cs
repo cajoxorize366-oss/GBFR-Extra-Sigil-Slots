@@ -8,10 +8,45 @@ internal static class UiLocalization
     internal const string GlyphSeed =
         "：（）当前语言中文英文当前角色未检测到当前角色未知角色刷新因子扫描出因子数量" +
         "当前状态可修改不可修改额外槽空缺失库存槽选择因子搜索因子名称或特性" +
-        "匹配的可选因子清空此槽取消已装备已用于额外槽" +
+        "匹配的因子清空此槽取消已装备已用于额外槽所有已使用本体扩展未被使用" +
+        "预设套用覆盖保存另存为管理重命名删除新建名称保存失败成功冲突直接清空" +
+        "当前因子被用在角色上请您替换另一个无法使用若想放入虚拟扩展栏请到对应位置" +
+        "脱除再添加转移确认相关方案将发生变更是否当前菜单期间不再提示是否知道了" +
         "主角格兰姬塔卡塔莉娜拉卡姆伊欧欧根萝赛塔菲莉兰斯洛特巴恩珀西瓦尔" +
         "齐格飞夏洛特尤达拉哈娜露梅巴萨拉卡塞达冈达葛萨卡莉奥丝特罗伊德" +
         "希耶提索恩圣德芬伽兰查玛琪拉菲菈贝阿朵丽丝尤斯提斯芙劳菲迪埃尔";
+
+    internal static readonly uint[] KnownCharacterHashes =
+    [
+        0x2A26B1B2,
+        0x18E2F9F9,
+        0x079DF0CC,
+        0x4D0A60C3,
+        0xDD7A151E,
+        0xC8616284,
+        0xC3FFD418,
+        0x22E437E5,
+        0x2EBE91D5,
+        0xBDEF7181,
+        0x627BCB0D,
+        0xFD3BE362,
+        0xFC6CDF7B,
+        0xE7053919,
+        0x978E4B18,
+        0x0D21B430,
+        0xF0EB77EF,
+        0xAA66178A,
+        0xA3A3CB2F,
+        0x718E1A14,
+        0x296471BE,
+        0xBAD16E3B,
+        0x1BB37EF0,
+        0x25D46F4B,
+        0x9A8AF295,
+        0x9B15CFB1,
+        0x646C3168,
+        0x74DD4C79,
+    ];
 
     internal static bool IsEnglish(int language) => language == English;
 

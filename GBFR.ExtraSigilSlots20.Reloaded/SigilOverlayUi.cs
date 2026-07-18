@@ -5,7 +5,7 @@ using System.Text;
 
 namespace GBFR.ExtraSigilSlots20.Reloaded;
 
-internal sealed unsafe class SigilOverlayUi : IDisposable
+internal sealed unsafe partial class SigilOverlayUi : IDisposable
 {
     private const int NativeSlotCount = 13;
     private const int ImGuiCondFirstUseEver = 1 << 2;
@@ -22,10 +22,10 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
     private readonly byte[] _labelBuffer = new byte[1024];
     private readonly ImVec2 _zeroSize = MakeVec2(0.0f, 0.0f);
     private readonly ImVec2 _windowPosition = MakeVec2(0.0f, 0.0f);
-    private readonly ImVec2 _windowSize = MakeVec2(620.0f, 450.0f);
+    private readonly ImVec2 _windowSize = MakeVec2(780.0f, 650.0f);
     private readonly ImVec2 _buttonSize = MakeVec2(-45.0f, 0.0f);
-    private readonly ImVec2 _pickerSize = MakeVec2(900.0f, 620.0f);
-    private readonly ImVec2 _childSize = MakeVec2(0.0f, -42.0f);
+    private readonly ImVec2 _pickerSize = MakeVec2(1000.0f, 700.0f);
+    private readonly ImVec2 _childSize = MakeVec2(0.0f, -76.0f);
     private readonly ImVec4 _successColor = MakeVec4(0.35f, 1.0f, 0.45f, 1.0f);
     private readonly ImVec4 _readOnlyColor = MakeVec4(1.0f, 0.8f, 0.2f, 1.0f);
 
@@ -42,8 +42,12 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
     private IntPtr _savedCaptureWindow;
     private bool _disposed;
 
-    internal SigilOverlayUi(Action<bool> setInputCapture, Action<string> log)
+    internal SigilOverlayUi(
+        string modDirectory,
+        Action<bool> setInputCapture,
+        Action<string> log)
     {
+        _presetStore = new SigilPresetStore(modDirectory, log);
         _setInputCapture = setInputCapture;
         _log = log;
     }
@@ -97,8 +101,7 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
         SetWindowOpen(open);
 
         english = DrawLanguageSelector(english);
-        uint displayCharacterHash = ResolveDisplayCharacterHash();
-        string characterName = UiLocalization.CharacterName(displayCharacterHash, english);
+        string characterName = UiLocalization.CharacterName(characterHash, english);
         ImGui.Text(
             english
                 ? $"Current character: {characterName}"
@@ -121,35 +124,10 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
         );
 
         ImGui.Separator();
-        bool requestPickerPopup = false;
-        ImGui.BeginDisabled(!canEdit);
-        for (int index = 0; index < NativeCore.VirtualSlotCount; ++index)
-        {
-            ImGui.PushID_Int(index);
-            ImGui.Text($"{NativeSlotCount + index:00}");
-            ImGui.SameLine(0.0f, -1.0f);
-            uint slotId = _selection[index];
-            string label = GetSelectedLabel(slotId, english);
-            if (ImGui.Button(label, _buttonSize))
-            {
-                _pickerSlot = index;
-                _pickerOpen = true;
-                Array.Clear(_searchBuffer);
-                RefreshInventory();
-                requestPickerPopup = true;
-            }
-            ImGui.SameLine(0.0f, -1.0f);
-            if (ImGui.SmallButton("X"))
-            {
-                if (NativeCore.SetSelection(characterHash, index, 0))
-                {
-                    LoadSelection(characterHash);
-                    RefreshInventory();
-                }
-            }
-            ImGui.PopID();
-        }
-        ImGui.EndDisabled();
+        DrawPresetBar(characterHash, canEdit, english);
+
+        ImGui.Separator();
+        bool requestPickerPopup = DrawVirtualSlots(characterHash, canEdit, english);
         string pickerTitle = english
             ? "Select an inventory sigil##Reloaded"
             : "选择库存因子##Reloaded";
@@ -157,6 +135,8 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
             ImGui.OpenPopupStr(pickerTitle, 0);
 
         DrawPicker(characterHash, canEdit, english, pickerTitle);
+        DrawPresetManager(characterHash, canEdit, english);
+        DrawPresetNameDialog(english);
         ImGui.End();
     }
 
@@ -207,7 +187,7 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
                 IntPtr.Zero
             );
         }
-        if (!english && RepairChineseSearchMojibake())
+        if (!english && RepairChineseBuffer(_searchBuffer))
         {
             // InputText keeps an internal edit buffer while active. Releasing and
             // refocusing it makes the corrected UTF-8 user buffer authoritative.
@@ -218,12 +198,13 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
         if (ImGui.Button(english ? "Refresh sigils" : "刷新因子", _zeroSize))
             RefreshInventory();
 
+        DrawUsageFilterButtons(english);
         BuildFilter(characterHash);
         ImGui.Separator();
         ImGui.Text(
             english
-                ? $"Matching selectable sigils: {_filteredIndices.Count}"
-                : $"匹配的可选因子：{_filteredIndices.Count}"
+                ? $"Matching sigils: {_filteredIndices.Count}"
+                : $"匹配的因子：{_filteredIndices.Count}"
         );
         ImGui.BeginChildStr("SigilInventory##Reloaded", _childSize, true, 0);
         using (var clipper = new ImGuiListClipper())
@@ -234,42 +215,29 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
                 for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
                 {
                     NativeCore.InventoryView item = _inventory[_filteredIndices[row]];
-                    string label = $"{item.Label}##inventory_{item.Gem.SlotId}";
+                    string label =
+                        $"{BuildInventoryDisplayLabel(item, characterHash, english)}" +
+                        $"##inventory_{item.Gem.SlotId}";
                     if (ImGui.SelectableBool(label, false, 0, _zeroSize))
-                    {
-                        if (NativeCore.SetSelection(
-                                characterHash,
-                                _pickerSlot,
-                                item.Gem.SlotId))
-                        {
-                            LoadSelection(characterHash);
-                            RefreshInventory();
-                            _pickerSlot = -1;
-                            ImGui.CloseCurrentPopup();
-                        }
-                    }
+                        HandleInventoryItemClick(item, characterHash, english);
                 }
             }
             ImGui.ImGuiListClipperEnd(clipper);
         }
         ImGui.EndChild();
 
+        OpenRequestedInventoryConflictDialogs(english);
+        if (DrawInventoryConflictDialogs(characterHash, english))
+            ClosePickerPopup();
+
         if (ImGui.Button(english ? "Clear this slot" : "清空此槽", _zeroSize))
         {
-            if (NativeCore.SetSelection(characterHash, _pickerSlot, 0))
-            {
-                LoadSelection(characterHash);
-                RefreshInventory();
-            }
-            _pickerSlot = -1;
-            ImGui.CloseCurrentPopup();
+            ClearVirtualSlot(characterHash, _pickerSlot);
+            ClosePickerPopup();
         }
         ImGui.SameLine(0.0f, -1.0f);
         if (ImGui.Button(english ? "Cancel" : "取消", _zeroSize))
-        {
-            _pickerSlot = -1;
-            ImGui.CloseCurrentPopup();
-        }
+            ClosePickerPopup();
         ImGui.EndPopup();
         if (!_pickerOpen)
             _pickerSlot = -1;
@@ -382,10 +350,20 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
         for (int index = 0; index < _inventory.Count; ++index)
         {
             NativeCore.InventoryView item = _inventory[index];
-            if (item.Equipped)
-                continue;
             if (item.RequiredCharacterHash != 0 &&
                 item.RequiredCharacterHash != characterHash)
+                continue;
+            bool bodyUsed = item.Equipped;
+            bool extensionUsed = item.VirtualOwnerCharacterHash != 0;
+            bool included = _usageFilter switch
+            {
+                InventoryUsageFilter.All => true,
+                InventoryUsageFilter.Used => bodyUsed || extensionUsed,
+                InventoryUsageFilter.BodyUsed => bodyUsed,
+                InventoryUsageFilter.ExtensionUsed => extensionUsed,
+                _ => !bodyUsed && !extensionUsed,
+            };
+            if (!included)
                 continue;
             if (search.Length != 0 && !item.Searchable.Contains(search, StringComparison.Ordinal))
                 continue;
@@ -401,18 +379,21 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
         return Encoding.UTF8.GetString(_searchBuffer, 0, length);
     }
 
-    private bool RepairChineseSearchMojibake()
+    private static bool RepairChineseBuffer(byte[] buffer)
     {
-        string current = GetSearchText();
+        int length = Array.IndexOf(buffer, (byte)0);
+        if (length < 0)
+            length = buffer.Length;
+        string current = Encoding.UTF8.GetString(buffer, 0, length);
         string repaired = RepairChineseMojibake(current);
         if (string.Equals(current, repaired, StringComparison.Ordinal))
             return false;
 
         byte[] utf8 = Encoding.UTF8.GetBytes(repaired);
-        if (utf8.Length >= _searchBuffer.Length)
+        if (utf8.Length >= buffer.Length)
             return false;
-        Array.Clear(_searchBuffer);
-        utf8.CopyTo(_searchBuffer, 0);
+        Array.Clear(buffer);
+        utf8.CopyTo(buffer, 0);
         return true;
     }
 
@@ -468,7 +449,14 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
         else if (changed)
             RestoreMouseCapture();
         if (!open)
+        {
             _pickerSlot = -1;
+            _pendingBodyItem = null;
+            _pendingTransferItem = null;
+            _requestBodyDialogOpen = false;
+            _requestTransferDialogOpen = false;
+            _suppressTransferPrompt = false;
+        }
     }
 
     private void BeginReleasedMouse()
@@ -530,6 +518,7 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
         _childSize.Dispose();
         _successColor.Dispose();
         _readOnlyColor.Dispose();
+        DisposePresetUiResources();
     }
 
     [DllImport("user32.dll")]

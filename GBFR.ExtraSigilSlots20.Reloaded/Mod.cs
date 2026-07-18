@@ -173,7 +173,7 @@ public sealed class Mod : IMod
                 )
                 .ConfigureAwait(false);
 
-            SigilOverlayUi ui = new(SetInputCapture, Log);
+            SigilOverlayUi ui = new(modDirectory, SetInputCapture, Log);
             bool initialized = false;
             lock (_imguiOperationLock)
             {

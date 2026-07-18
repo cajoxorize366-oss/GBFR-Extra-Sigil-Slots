@@ -107,6 +107,10 @@ internal sealed unsafe class CjkConfiguredDx11Hook : IImguiHook
         SortedSet<ushort> glyphs = [];
         for (int codePoint = 0x20; codePoint <= 0xFF; ++codePoint)
             glyphs.Add((ushort)codePoint);
+        // Preset names are user-defined, so they cannot be covered by the
+        // static UI seed or the localized sigil-name table alone.
+        for (int codePoint = 0x3400; codePoint <= 0x9FFF; ++codePoint)
+            glyphs.Add((ushort)codePoint);
 
         string tablePath = Path.Combine(
             _modDirectory,

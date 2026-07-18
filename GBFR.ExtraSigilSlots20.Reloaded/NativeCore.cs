@@ -6,9 +6,10 @@ namespace GBFR.ExtraSigilSlots20.Reloaded;
 
 internal static unsafe class NativeCore
 {
-    internal const int AbiVersion = 6;
+    internal const int AbiVersion = 7;
     internal const int VirtualSlotCount = 8;
     internal const int OwnerCharacterCapacity = 4;
+    internal const int PresetCharacterCapacity = 32;
 
     private const string LibraryName = "GBFR.ExtraSigilSlots20.Native.dll";
     private static readonly object ResolverLock = new();
@@ -38,6 +39,34 @@ internal static unsafe class NativeCore
         internal uint RequiredCharacterHash;
         internal uint VirtualOwnerCharacterHash;
         internal int VirtualOwnerSlot;
+    }
+
+    internal enum PresetSlotStatus : int
+    {
+        Empty = 0,
+        Applied = 1,
+        Missing = -1,
+        Equipped = -2,
+        Disabled = -3,
+        CharacterRestricted = -4,
+        Duplicate = -5,
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    internal struct PresetCharacterSelection
+    {
+        internal uint CharacterHash;
+        internal fixed uint Slots[VirtualSlotCount];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    internal struct PresetSlotResult
+    {
+        internal uint CharacterHash;
+        internal int VirtualSlot;
+        internal uint RequestedSlotId;
+        internal uint OwnerCharacterHash;
+        internal PresetSlotStatus Status;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -108,6 +137,8 @@ internal static unsafe class NativeCore
     {
         internal string Searchable { get; } = Label.ToLowerInvariant();
     }
+
+    internal sealed record PresetApplySummary(PresetSlotResult[] SlotResults);
 
     internal static void Configure(string modDirectory)
     {
@@ -225,6 +256,53 @@ internal static unsafe class NativeCore
         return NativeSetSelection(characterHash, virtualSlot, inventorySlotId) != 0;
     }
 
+    internal static PresetApplySummary? ApplyPreset(
+        IReadOnlyDictionary<uint, uint[]> selections)
+    {
+        if (selections.Count == 0 || selections.Count > PresetCharacterCapacity)
+            return null;
+
+        KeyValuePair<uint, uint[]>[] ordered = selections
+            .OrderBy(pair => pair.Key)
+            .ToArray();
+        PresetCharacterSelection[] nativeSelections =
+            new PresetCharacterSelection[ordered.Length];
+        for (int index = 0; index < ordered.Length; ++index)
+        {
+            PresetCharacterSelection selection = default;
+            selection.CharacterHash = ordered[index].Key;
+            uint[] sourceSlots = ordered[index].Value;
+            for (int slot = 0; slot < VirtualSlotCount; ++slot)
+            {
+                selection.Slots[slot] = slot < sourceSlots.Length
+                    ? sourceSlots[slot]
+                    : 0;
+            }
+            nativeSelections[index] = selection;
+        }
+
+        PresetSlotResult[] results =
+            new PresetSlotResult[ordered.Length * VirtualSlotCount];
+        uint resultCount = 0;
+        fixed (PresetCharacterSelection* selectionPointer = nativeSelections)
+        fixed (PresetSlotResult* resultPointer = results)
+        {
+            if (NativeApplyPreset(
+                    selectionPointer,
+                    (uint)nativeSelections.Length,
+                    resultPointer,
+                    (uint)results.Length,
+                    &resultCount) == 0 ||
+                resultCount > (uint)results.Length)
+            {
+                return null;
+            }
+        }
+        if (resultCount != results.Length)
+            Array.Resize(ref results, (int)resultCount);
+        return new PresetApplySummary(results);
+    }
+
     internal static uint RequestApply(uint characterHash) => NativeRequestApply(characterHash);
 
     internal static bool SetAutoApply(bool enabled) => NativeSetAutoApply(enabled ? 1 : 0) != 0;
@@ -311,6 +389,14 @@ internal static unsafe class NativeCore
         uint inventorySlotId);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    private static extern int GBFR20_ApplyPreset(
+        PresetCharacterSelection* selections,
+        uint selectionCount,
+        PresetSlotResult* slotResults,
+        uint slotResultCapacity,
+        uint* slotResultCount);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     private static extern uint GBFR20_RequestApply(uint characterHash);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
@@ -358,6 +444,18 @@ internal static unsafe class NativeCore
         GBFR20_GetSelection(hash, slots, count);
     private static int NativeSetSelection(uint hash, int slot, uint id) =>
         GBFR20_SetSelection(hash, slot, id);
+    private static int NativeApplyPreset(
+        PresetCharacterSelection* selections,
+        uint selectionCount,
+        PresetSlotResult* slotResults,
+        uint slotResultCapacity,
+        uint* slotResultCount) =>
+        GBFR20_ApplyPreset(
+            selections,
+            selectionCount,
+            slotResults,
+            slotResultCapacity,
+            slotResultCount);
     private static uint NativeRequestApply(uint hash) => GBFR20_RequestApply(hash);
     private static int NativeSetAutoApply(int enabled) => GBFR20_SetAutoApply(enabled);
     private static int NativeSetShowEquipped(int enabled) => GBFR20_SetShowEquipped(enabled);

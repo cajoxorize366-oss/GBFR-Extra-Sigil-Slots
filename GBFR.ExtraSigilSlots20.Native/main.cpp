@@ -2131,6 +2131,196 @@ bool SetSelection(uint32_t character_hash, int virtual_slot, uint32_t inventory_
    return true;
 }
 
+bool ApplyPresetSelections(
+   const GBFR20_PresetCharacterSelection* selections,
+   uint32_t selection_count,
+   GBFR20_PresetSlotResult* slot_results,
+   uint32_t slot_result_capacity,
+   uint32_t* slot_result_count)
+{
+   if (slot_result_count != nullptr)
+      *slot_result_count = 0;
+   if (selections == nullptr || selection_count == 0 ||
+       selection_count > GBFR20_PRESET_CHARACTER_CAPACITY ||
+       slot_results == nullptr || slot_result_count == nullptr)
+      return false;
+
+   const uint32_t required_result_capacity = selection_count * kVirtualSlotCount;
+   if (slot_result_capacity < required_result_capacity)
+      return false;
+
+   uint32_t current_character_hash = 0;
+   if (!SafeReadUiSelectedCharacterHash(current_character_hash) ||
+       !SafeCanEditCharacter(current_character_hash))
+      return false;
+
+   struct CandidateSelection
+   {
+      uint32_t character_hash = 0;
+      std::array<uint32_t, kVirtualSlotCount> slots{};
+   };
+
+   std::vector<CandidateSelection> candidates;
+   candidates.reserve(selection_count);
+   std::vector<GBFR20_PresetSlotResult> results;
+   results.reserve(required_result_capacity);
+   std::unordered_set<uint32_t> seen_characters;
+   std::unordered_set<uint32_t> claimed_slot_ids;
+
+   for (uint32_t selection_index = 0; selection_index < selection_count; ++selection_index)
+   {
+      const GBFR20_PresetCharacterSelection& source_selection = selections[selection_index];
+      if (source_selection.character_hash == 0 ||
+          !seen_characters.emplace(source_selection.character_hash).second)
+         return false;
+
+      CandidateSelection candidate{};
+      candidate.character_hash = source_selection.character_hash;
+      for (int slot_index = 0; slot_index < kVirtualSlotCount; ++slot_index)
+      {
+         const uint32_t requested_slot_id =
+            source_selection.slots[static_cast<size_t>(slot_index)];
+         GBFR20_PresetSlotResult result{};
+         result.character_hash = source_selection.character_hash;
+         result.virtual_slot = slot_index;
+         result.requested_slot_id = requested_slot_id;
+         result.status = GBFR20_PRESET_SLOT_EMPTY;
+
+         if (requested_slot_id == 0)
+         {
+            results.push_back(result);
+            continue;
+         }
+
+         const uintptr_t source_address = ResolveGemAddress(requested_slot_id);
+         GemData source{};
+         if (source_address == 0 || !SafeReadGem(source_address, source) ||
+             source.slot_id != requested_slot_id || source.gem_id == 0)
+         {
+            result.status = GBFR20_PRESET_SLOT_MISSING;
+            results.push_back(result);
+            continue;
+         }
+         if ((source.flags & 0x10) != 0)
+         {
+            result.status = GBFR20_PRESET_SLOT_DISABLED;
+            results.push_back(result);
+            continue;
+         }
+         if (source.worn_by != kUnwornCharacterHash)
+         {
+            result.owner_character_hash = source.worn_by;
+            result.status = GBFR20_PRESET_SLOT_EQUIPPED;
+            results.push_back(result);
+            continue;
+         }
+
+         const uint32_t required_character = GetRequiredCharacterHash(source.gem_id);
+         if (required_character != 0 &&
+             required_character != source_selection.character_hash)
+         {
+            result.owner_character_hash = required_character;
+            result.status = GBFR20_PRESET_SLOT_CHARACTER_RESTRICTED;
+            results.push_back(result);
+            continue;
+         }
+         if (!claimed_slot_ids.emplace(requested_slot_id).second)
+         {
+            result.status = GBFR20_PRESET_SLOT_DUPLICATE;
+            results.push_back(result);
+            continue;
+         }
+
+         candidate.slots[static_cast<size_t>(slot_index)] = requested_slot_id;
+         result.status = GBFR20_PRESET_SLOT_APPLIED;
+         results.push_back(result);
+      }
+      candidates.push_back(candidate);
+   }
+
+   std::unordered_set<uint32_t> affected_characters;
+   {
+      std::unique_lock lock(g_selection_mutex);
+      auto next_selections = g_character_selections;
+
+      // A valid physical sigil instance belongs to at most one virtual slot.
+      // Clear its previous live owner before installing the preset snapshot.
+      for (auto& [character_hash, slots] : next_selections)
+      {
+         for (uint32_t& existing_slot_id : slots)
+         {
+            if (existing_slot_id != 0 && claimed_slot_ids.contains(existing_slot_id))
+               existing_slot_id = 0;
+         }
+      }
+      for (const CandidateSelection& candidate : candidates)
+         next_selections[candidate.character_hash] = candidate.slots;
+
+      // Keep deterministic ownership even if an older or manually edited INI
+      // contained duplicate slot ids outside the characters in this preset.
+      std::vector<uint32_t> character_hashes;
+      character_hashes.reserve(next_selections.size());
+      for (const auto& [character_hash, slots] : next_selections)
+         character_hashes.push_back(character_hash);
+      std::sort(character_hashes.begin(), character_hashes.end());
+
+      std::unordered_set<uint32_t> rebuilt_claims;
+      std::unordered_map<uint32_t, VirtualOwner> rebuilt_owners;
+      for (const uint32_t character_hash : character_hashes)
+      {
+         auto& slots = next_selections[character_hash];
+         for (int slot_index = 0; slot_index < kVirtualSlotCount; ++slot_index)
+         {
+            uint32_t& slot_id = slots[static_cast<size_t>(slot_index)];
+            if (slot_id == 0)
+               continue;
+            if (!rebuilt_claims.emplace(slot_id).second)
+            {
+               slot_id = 0;
+               continue;
+            }
+            rebuilt_owners[slot_id] = {character_hash, slot_index};
+         }
+      }
+
+      for (const auto& [character_hash, next_slots] : next_selections)
+      {
+         const auto previous = g_character_selections.find(character_hash);
+         const std::array<uint32_t, kVirtualSlotCount> empty{};
+         const auto& previous_slots = previous == g_character_selections.end()
+            ? empty
+            : previous->second;
+         if (previous_slots != next_slots)
+            affected_characters.emplace(character_hash);
+      }
+
+      g_character_selections = std::move(next_selections);
+      g_virtual_owner_by_slot_id = std::move(rebuilt_owners);
+   }
+
+   for (const uint32_t affected_hash : affected_characters)
+      SaveCharacterSelection(affected_hash);
+   MarkInventoryDirty();
+
+   bool auto_apply = false;
+   {
+      std::scoped_lock lock(g_settings_mutex);
+      auto_apply = g_settings.auto_apply;
+   }
+   if (auto_apply && affected_characters.contains(current_character_hash))
+      RequestHotApply(current_character_hash);
+   for (const uint32_t affected_hash : affected_characters)
+      if (affected_hash != current_character_hash)
+         ScheduleReconcileApply(affected_hash);
+
+   std::memcpy(
+      slot_results,
+      results.data(),
+      results.size() * sizeof(GBFR20_PresetSlotResult));
+   *slot_result_count = static_cast<uint32_t>(results.size());
+   return true;
+}
+
 bool RebuildInventoryIndexLocked(uintptr_t system_data)
 {
    g_inventory_by_slot_id.clear();
@@ -3433,6 +3623,23 @@ int32_t GBFR20_CALL GBFR20_SetSelection(
    uint32_t inventory_slot_id)
 {
    return SetSelection(character_hash, virtual_slot, inventory_slot_id) ? 1 : 0;
+}
+
+int32_t GBFR20_CALL GBFR20_ApplyPreset(
+   const GBFR20_PresetCharacterSelection* selections,
+   uint32_t selection_count,
+   GBFR20_PresetSlotResult* slot_results,
+   uint32_t slot_result_capacity,
+   uint32_t* slot_result_count)
+{
+   return ApplyPresetSelections(
+      selections,
+      selection_count,
+      slot_results,
+      slot_result_capacity,
+      slot_result_count)
+      ? 1
+      : 0;
 }
 
 uint32_t GBFR20_CALL GBFR20_RequestApply(uint32_t character_hash)
