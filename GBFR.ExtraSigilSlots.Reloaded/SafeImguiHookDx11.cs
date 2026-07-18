@@ -33,7 +33,7 @@ using System.Threading;
 using static Reloaded.Imgui.Hook.Misc.Native;
 using Device = SharpDX.Direct3D11.Device;
 
-namespace GBFR.ExtraSigilSlots20.Reloaded;
+namespace GBFR.ExtraSigilSlots.Reloaded;
 
 /// <summary>
 /// Present-only DX11 ImGui backend. Render targets are created only for frames
@@ -56,11 +56,19 @@ internal sealed unsafe class SafeImguiHookDx11 : IImguiHook
     private static SafeImguiHookDx11? s_instance;
     private static readonly IntPtr FailureResult = new(unchecked((int)0x80004005));
 
+    [ThreadStatic]
+    private static bool s_presentRecursionLock;
+
     private readonly Action<string> _log;
+    private readonly object _hookStateLock = new();
+    private readonly ReaderWriterLockSlim _presentLifetimeLock =
+        new(LockRecursionPolicy.SupportsRecursion);
     private IHook<DX11Hook.Present> _presentHook = null!;
+    private long _originalPresentAddress;
     private bool _initialized;
-    private bool _presentRecursionLock;
     private int _presentFailureCount;
+    private int _nativePresentFailureHandled;
+    private int _presentStopping;
     private bool _disposed;
 
     internal SafeImguiHookDx11(Action<string> log)
@@ -89,14 +97,16 @@ internal sealed unsafe class SafeImguiHookDx11 : IImguiHook
         s_instance = this;
         try
         {
-            _presentHook = SDK.Hooks
-                .CreateHook<DX11Hook.Present>(
-                    typeof(SafeImguiHookDx11),
-                    nameof(PresentImplStatic),
-                    presentPointer)
-                .Activate();
+            _presentHook = SDK.Hooks.CreateHook<DX11Hook.Present>(
+                typeof(SafeImguiHookDx11),
+                nameof(PresentImplStatic),
+                presentPointer);
+            Volatile.Write(
+                ref _originalPresentAddress,
+                _presentHook.OriginalFunctionAddress);
+            _presentHook.Activate();
             TryLog(
-                "DX11 Present-only backend enabled; " +
+                "DX11 Present-only backend enabled with a native original-Present boundary; " +
                 "frame-local render targets replace the ResizeBuffers hook.");
         }
         catch
@@ -116,53 +126,61 @@ internal sealed unsafe class SafeImguiHookDx11 : IImguiHook
 
     private IntPtr PresentImpl(IntPtr swapChainPointer, int syncInterval, PresentFlags flags)
     {
-        if (_presentRecursionLock)
-            return InvokeOriginalPresent(swapChainPointer, syncInterval, flags);
-
-        _presentRecursionLock = true;
+        _presentLifetimeLock.EnterReadLock();
         try
         {
+            if (Volatile.Read(ref _presentStopping) != 0 || s_presentRecursionLock)
+                return InvokeOriginalPresent(swapChainPointer, syncInterval, flags);
+
+            s_presentRecursionLock = true;
             try
             {
-                // The callback owns the native pointer. SharpDX's pointer
-                // constructor does not AddRef, so this borrowed wrapper must
-                // not be disposed (Dispose would release the game's object).
-                var swapChain = new SwapChain(swapChainPointer);
-                IntPtr windowHandle = swapChain.Description.OutputHandle;
-                if (!ImguiHook.CheckWindowHandle(windowHandle))
-                    return InvokeOriginalPresent(swapChainPointer, syncInterval, flags);
-
-                using var device = swapChain.GetDevice<Device>();
-                if (!_initialized)
+                try
                 {
-                    ImguiHook.InitializeWithHandle(windowHandle);
-                    ImGui.ImGuiImplDX11Init(
-                        (void*)device.NativePointer,
-                        (void*)device.ImmediateContext.NativePointer);
-                    _initialized = true;
+                    // The callback owns the native pointer. SharpDX's pointer
+                    // constructor does not AddRef, so this borrowed wrapper must
+                    // not be disposed (Dispose would release the game's object).
+                    var swapChain = new SwapChain(swapChainPointer);
+                    IntPtr windowHandle = swapChain.Description.OutputHandle;
+                    if (!ImguiHook.CheckWindowHandle(windowHandle))
+                        return InvokeOriginalPresent(swapChainPointer, syncInterval, flags);
+
+                    using var device = swapChain.GetDevice<Device>();
+                    if (!_initialized)
+                    {
+                        ImguiHook.InitializeWithHandle(windowHandle);
+                        ImGui.ImGuiImplDX11Init(
+                            (void*)device.NativePointer,
+                            (void*)device.ImmediateContext.NativePointer);
+                        _initialized = true;
+                    }
+
+                    ImGui.ImGuiImplDX11NewFrame();
+                    ImguiHook.NewFrame();
+                    using var drawData = ImGui.GetDrawData();
+                    if (drawData.CmdListsCount > 0 && drawData.TotalVtxCount > 0)
+                        RenderFrame(swapChain, device, drawData);
+                }
+                catch (Exception exception)
+                {
+                    ReportFailure("Present overlay", exception);
                 }
 
-                ImGui.ImGuiImplDX11NewFrame();
-                ImguiHook.NewFrame();
-                using var drawData = ImGui.GetDrawData();
-                if (drawData.CmdListsCount > 0 && drawData.TotalVtxCount > 0)
-                    RenderFrame(swapChain, device, drawData);
+                return InvokeOriginalPresent(swapChainPointer, syncInterval, flags);
             }
             catch (Exception exception)
             {
-                ReportFailure("Present overlay", exception);
+                ReportFailure("Present callback", exception);
+                return FailureResult;
             }
-
-            return InvokeOriginalPresent(swapChainPointer, syncInterval, flags);
-        }
-        catch (Exception exception)
-        {
-            ReportFailure("Present callback", exception);
-            return FailureResult;
+            finally
+            {
+                s_presentRecursionLock = false;
+            }
         }
         finally
         {
-            _presentRecursionLock = false;
+            _presentLifetimeLock.ExitReadLock();
         }
     }
 
@@ -200,15 +218,56 @@ internal sealed unsafe class SafeImguiHookDx11 : IImguiHook
     {
         try
         {
-            return _presentHook.OriginalFunction.Value.Invoke(
+            long originalPresentAddress = Volatile.Read(ref _originalPresentAddress);
+            if (originalPresentAddress == 0)
+                return FailureResult;
+
+            int result = NativeCore.InvokeOriginalPresent(
+                unchecked((ulong)originalPresentAddress),
                 swapChainPointer,
                 syncInterval,
-                flags);
+                unchecked((uint)flags),
+                out uint exceptionCode);
+            if (exceptionCode != 0)
+                HandleNativePresentFailure(exceptionCode);
+            return new IntPtr(result);
         }
         catch (Exception exception)
         {
             ReportFailure("original Present", exception);
             return FailureResult;
+        }
+    }
+
+    private void HandleNativePresentFailure(uint exceptionCode)
+    {
+        if (Interlocked.Exchange(ref _nativePresentFailureHandled, 1) != 0)
+            return;
+
+        Volatile.Write(ref _presentStopping, 1);
+        TryLog(
+            $"DX11 original Present native boundary caught SEH 0x{exceptionCode:X8}; " +
+            "the overlay hook will be disabled off the graphics callback thread.");
+        if (!ThreadPool.QueueUserWorkItem(
+                static state => ((SafeImguiHookDx11)state!).DisableAfterNativePresentFailure(),
+                this))
+        {
+            TryLog("DX11 could not queue the native-Present failure fallback.");
+        }
+    }
+
+    private void DisableAfterNativePresentFailure()
+    {
+        try
+        {
+            Disable();
+            TryLog(
+                "DX11 overlay hook disabled after a native Present failure; " +
+                "later frames now use the game's Present directly.");
+        }
+        catch (Exception exception)
+        {
+            ReportFailure("hook disable after native Present failure", exception);
         }
     }
 
@@ -236,14 +295,18 @@ internal sealed unsafe class SafeImguiHookDx11 : IImguiHook
 
     public void Disable()
     {
-        _presentHook?.Disable();
+        lock (_hookStateLock)
+            _presentHook?.Disable();
     }
 
     public void Enable()
     {
-        if (_disposed)
-            return;
-        _presentHook?.Enable();
+        lock (_hookStateLock)
+        {
+            if (_disposed || Volatile.Read(ref _nativePresentFailureHandled) != 0)
+                return;
+            _presentHook?.Enable();
+        }
     }
 
     public void Dispose()
@@ -251,6 +314,7 @@ internal sealed unsafe class SafeImguiHookDx11 : IImguiHook
         if (_disposed)
             return;
         _disposed = true;
+        Volatile.Write(ref _presentStopping, 1);
 
         try
         {
@@ -261,10 +325,25 @@ internal sealed unsafe class SafeImguiHookDx11 : IImguiHook
             ReportFailure("hook disable", exception);
         }
 
+        bool lifetimeLockEntered = false;
         try
         {
-            if (_initialized)
+            if (!s_presentRecursionLock)
+            {
+                lifetimeLockEntered = _presentLifetimeLock.TryEnterWriteLock(
+                    TimeSpan.FromSeconds(2));
+            }
+            if (!lifetimeLockEntered)
+            {
+                TryLog(
+                    "DX11 shutdown skipped graphics resource release because a Present callback " +
+                    "was still active; process teardown will reclaim those resources.");
+            }
+            else if (_initialized)
+            {
                 ImGui.ImGuiImplDX11Shutdown();
+                _initialized = false;
+            }
         }
         catch (Exception exception)
         {
@@ -272,9 +351,10 @@ internal sealed unsafe class SafeImguiHookDx11 : IImguiHook
         }
         finally
         {
-            _initialized = false;
             if (ReferenceEquals(s_instance, this))
                 s_instance = null;
+            if (lifetimeLockEntered)
+                _presentLifetimeLock.ExitWriteLock();
         }
     }
 

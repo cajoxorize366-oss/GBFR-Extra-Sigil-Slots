@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace GBFR.ExtraSigilSlots20.Reloaded;
+namespace GBFR.ExtraSigilSlots.Reloaded;
 
 internal sealed unsafe class CjkConfiguredDx11Hook : IImguiHook
 {
@@ -105,7 +105,7 @@ internal sealed unsafe class CjkConfiguredDx11Hook : IImguiHook
 
         string tablePath = Path.Combine(
             _modDirectory,
-            "GBFR-ExtraSigilSlots20.names.zh-CN.tsv"
+            "GBFR-ExtraSigilSlots.names.zh-CN.tsv"
         );
         if (File.Exists(tablePath))
         {

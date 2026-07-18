@@ -7,13 +7,13 @@ if (args.Length != 1)
     throw new ArgumentException("Pass the managed build output directory.");
 
 string modDirectory = Path.GetFullPath(args[0]);
-string managedPath = Path.Combine(modDirectory, "GBFR.ExtraSigilSlots20.Reloaded.dll");
+string managedPath = Path.Combine(modDirectory, "GBFR.ExtraSigilSlots.Reloaded.dll");
 Assembly assembly = Assembly.LoadFrom(managedPath);
 BindingFlags staticFlags = BindingFlags.Static | BindingFlags.NonPublic;
 BindingFlags instanceFlags = BindingFlags.Instance | BindingFlags.NonPublic;
 
 Type nativeCore = assembly.GetType(
-    "GBFR.ExtraSigilSlots20.Reloaded.NativeCore",
+    "GBFR.ExtraSigilSlots.Reloaded.NativeCore",
     throwOnError: true)!;
 nativeCore.GetMethod("Configure", staticFlags)!.Invoke(null, [modDirectory]);
 
@@ -27,14 +27,14 @@ if (Marshal.SizeOf(nativeSelectionType) != 100 || Marshal.SizeOf(nativeResultTyp
     throw new InvalidOperationException("Managed preset ABI struct sizes are incorrect.");
 
 IntPtr nativeLibrary = NativeLibrary.Load(
-    Path.Combine(modDirectory, "GBFR.ExtraSigilSlots20.Native.dll"));
+    Path.Combine(modDirectory, "GBFR.ExtraSigilSlots.Native.dll"));
 try
 {
     IntPtr abiExport = NativeLibrary.GetExport(nativeLibrary, "GBFR20_GetAbiVersion");
     IntPtr applyExport = NativeLibrary.GetExport(nativeLibrary, "GBFR20_ApplyPreset");
     GetAbiVersion getAbiVersion = Marshal.GetDelegateForFunctionPointer<GetAbiVersion>(abiExport);
-    if (getAbiVersion() != 8 || applyExport == IntPtr.Zero)
-        throw new InvalidOperationException("Native ABI 8 preset exports are unavailable.");
+    if (getAbiVersion() != 9 || applyExport == IntPtr.Zero)
+        throw new InvalidOperationException("Native ABI 9 preset exports are unavailable.");
 }
 finally
 {
@@ -42,18 +42,37 @@ finally
 }
 
 Type storeType = assembly.GetType(
-    "GBFR.ExtraSigilSlots20.Reloaded.SigilPresetStore",
+    "GBFR.ExtraSigilSlots.Reloaded.SigilPresetStore",
     throwOnError: true)!;
-string testDirectory = Path.Combine(
+Type migratorType = assembly.GetType(
+    "GBFR.ExtraSigilSlots.Reloaded.LegacyDataMigrator",
+    throwOnError: true)!;
+string testRoot = Path.Combine(
     Path.GetTempPath(),
-    "GBFR20-preset-test-" + Guid.NewGuid().ToString("N"));
+    "GBFRES-preset-test-" + Guid.NewGuid().ToString("N"));
+string testDirectory = Path.Combine(testRoot, "GBFR.ExtraSigilSlots.Reloaded");
+string legacyDirectory = Path.Combine(testRoot, "GBFR.ExtraSigilSlots20.Reloaded");
 Directory.CreateDirectory(testDirectory);
-string jsonPath = Path.Combine(testDirectory, "GBFR-ExtraSigilSlots20.presets.json");
+Directory.CreateDirectory(legacyDirectory);
+string jsonPath = Path.Combine(testDirectory, "GBFR-ExtraSigilSlots.presets.json");
+string legacyJsonPath = Path.Combine(legacyDirectory, "GBFR-ExtraSigilSlots20.presets.json");
+string configPath = Path.Combine(testDirectory, "GBFR-ExtraSigilSlotsNumConfig.ini");
+string legacyConfigPath = Path.Combine(legacyDirectory, "GBFR-ExtraSigilSlotsNumConfig.ini");
 
 try
 {
     File.WriteAllText(
-        jsonPath,
+        configPath,
+        "[Settings]\nConfigVersion=2\nToggleKey=119\nShowEquipped=0\n" +
+        "AutoApply=1\nLanguage=zh-CN\nVirtualSlotCount=8\n",
+        new UTF8Encoding(false));
+    File.WriteAllText(
+        legacyConfigPath,
+        "[Settings]\nConfigVersion=2\nToggleKey=119\nShowEquipped=1\n" +
+        "AutoApply=1\nLanguage=en\nVirtualSlotCount=12\n",
+        new UTF8Encoding(false));
+    File.WriteAllText(
+        legacyJsonPath,
         """
         {
           "Version": 1,
@@ -82,6 +101,37 @@ try
         }
         """,
         new UTF8Encoding(false));
+
+    List<string> migrationLogs = [];
+    migratorType.GetMethod("Migrate", staticFlags)!.Invoke(
+        null,
+        [testDirectory, new Action<string>(migrationLogs.Add)]);
+    if (!File.Exists(jsonPath) ||
+        !File.ReadAllText(configPath).Contains("VirtualSlotCount=12", StringComparison.Ordinal) ||
+        !File.Exists(legacyJsonPath) ||
+        migrationLogs.Count(message => message.StartsWith("Migrated", StringComparison.Ordinal)) != 2)
+    {
+        throw new InvalidOperationException("Legacy settings/preset migration failed.");
+    }
+
+    string migratedConfig = File.ReadAllText(configPath);
+    string migratedPresets = File.ReadAllText(jsonPath);
+    File.WriteAllText(
+        legacyConfigPath,
+        "[Settings]\nConfigVersion=2\nVirtualSlotCount=16\n",
+        new UTF8Encoding(false));
+    File.WriteAllText(
+        legacyJsonPath,
+        "{\"Version\":2,\"Presets\":[]}",
+        new UTF8Encoding(false));
+    migratorType.GetMethod("Migrate", staticFlags)!.Invoke(
+        null,
+        [testDirectory, new Action<string>(migrationLogs.Add)]);
+    if (File.ReadAllText(configPath) != migratedConfig ||
+        File.ReadAllText(jsonPath) != migratedPresets)
+    {
+        throw new InvalidOperationException("Migration overwrote canonical user data.");
+    }
 
     object store = Activator.CreateInstance(
         storeType,
@@ -123,13 +173,14 @@ try
     Console.WriteLine("ROLLBACK_REFERENCES=2");
     Console.WriteLine("COMMITTED_REFERENCES=0");
     Console.WriteLine("CAPTURED_CHARACTERS=28");
-    Console.WriteLine("ABI_VERSION=8");
+    Console.WriteLine("LEGACY_DATA_MIGRATION=PASS");
+    Console.WriteLine("ABI_VERSION=9");
     Console.WriteLine("PRESET_SELECTION_SIZE=100");
     Console.WriteLine("PRESET_RESULT_SIZE=20");
 }
 finally
 {
-    Directory.Delete(testDirectory, recursive: true);
+    Directory.Delete(testRoot, recursive: true);
 }
 
 static bool JsonContainsSlot(string path, uint slotId)

@@ -4,7 +4,7 @@ using Reloaded.Imgui.Hook.Implementations;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace GBFR.ExtraSigilSlots20.Reloaded;
+namespace GBFR.ExtraSigilSlots.Reloaded;
 
 public sealed partial class Mod
 {

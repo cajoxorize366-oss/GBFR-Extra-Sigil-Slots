@@ -1,6 +1,6 @@
 using DearImguiSharp;
 
-namespace GBFR.ExtraSigilSlots20.Reloaded;
+namespace GBFR.ExtraSigilSlots.Reloaded;
 
 internal sealed unsafe partial class SigilOverlayUi
 {
@@ -149,7 +149,7 @@ internal sealed unsafe partial class SigilOverlayUi
             return;
 
         SigilPreset? selected = ResolveSelectedPreset();
-        ImGui.BeginChildStr("PresetList##GBFR20", _presetManagerChildSize, true, 0);
+        ImGui.BeginChildStr("PresetList##GBFRES", _presetManagerChildSize, true, 0);
         for (int index = 0; index < _presetStore.Presets.Count; ++index)
         {
             SigilPreset preset = _presetStore.Presets[index];

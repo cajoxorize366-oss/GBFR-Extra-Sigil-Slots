@@ -9,13 +9,13 @@ modules. The stable pre-refactor baseline is commit `1351349`, preserved on the
 
 The shipped mod has two runtime components:
 
-- `GBFR.ExtraSigilSlots20.Reloaded.dll` owns Reloaded-II lifecycle, ImGui,
+- `GBFR.ExtraSigilSlots.Reloaded.dll` owns Reloaded-II lifecycle, ImGui,
   localization, presets, and keyboard/mouse capture policy.
-- `GBFR.ExtraSigilSlots20.Native.dll` owns executable validation, game-memory
+- `GBFR.ExtraSigilSlots.Native.dll` owns executable validation, game-memory
   access, SafetyHook detours, inventory snapshots, per-character selections,
   and same-thread status rebuilds.
 
-The packed declarations in `GBFR.ExtraSigilSlots20.Native/native_api.h` are the
+The packed declarations in `GBFR.ExtraSigilSlots.Native/native_api.h` are the
 only supported boundary between them. Refactoring must not silently change
 export names, calling conventions, structure packing, field order, structure
 sizes, result values, or ABI version.
@@ -69,7 +69,7 @@ stores and coordinators, but stores must not install or disable hooks.
 ## Implemented native source layout
 
 ```text
-GBFR.ExtraSigilSlots20.Native/
+GBFR.ExtraSigilSlots.Native/
   native_api.h
   native_internal.h
   src/

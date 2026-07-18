@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace GBFR.ExtraSigilSlots20.Reloaded;
+namespace GBFR.ExtraSigilSlots.Reloaded;
 
 internal static unsafe partial class NativeCore
 {
@@ -15,6 +15,14 @@ internal static unsafe partial class NativeCore
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     private static extern void GBFR20_Shutdown();
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    private static extern int GBFR20_InvokeOriginalPresent(
+        ulong originalFunctionAddress,
+        IntPtr swapChain,
+        uint syncInterval,
+        uint presentFlags,
+        out uint exceptionCode);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     private static extern int GBFR20_GetState(out RuntimeState state, uint stateSize);
@@ -87,6 +95,18 @@ internal static unsafe partial class NativeCore
     private static int NativeInitialize() => GBFR20_Initialize();
     private static void NativeTick() => GBFR20_Tick();
     private static void NativeShutdown() => GBFR20_Shutdown();
+    private static int NativeInvokeOriginalPresent(
+        ulong originalFunctionAddress,
+        IntPtr swapChain,
+        uint syncInterval,
+        uint presentFlags,
+        out uint exceptionCode) =>
+        GBFR20_InvokeOriginalPresent(
+            originalFunctionAddress,
+            swapChain,
+            syncInterval,
+            presentFlags,
+            out exceptionCode);
     private static int NativeGetState(out RuntimeState state, uint size) =>
         GBFR20_GetState(out state, size);
     private static uint NativeCopyRuntimeMessage(sbyte* buffer, uint size) =>

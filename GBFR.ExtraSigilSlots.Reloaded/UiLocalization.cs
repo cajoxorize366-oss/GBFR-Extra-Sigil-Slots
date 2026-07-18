@@ -1,4 +1,4 @@
-namespace GBFR.ExtraSigilSlots20.Reloaded;
+namespace GBFR.ExtraSigilSlots.Reloaded;
 
 internal static class UiLocalization
 {

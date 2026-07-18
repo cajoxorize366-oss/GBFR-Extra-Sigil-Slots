@@ -1,10 +1,10 @@
 {
-  "ModId": "GBFR.ExtraSigilSlots20.Reloaded",
+  "ModId": "GBFR.ExtraSigilSlots.Reloaded",
   "ModName": "GBFR Extra Sigil Slots - Reloaded ImGui (ER 2.0.2)",
   "ModAuthor": "Hiyajomaho-num9",
-  "ModVersion": "0.5.0",
+  "ModVersion": "0.6.0",
   "ModDescription": "Reloaded-II-only configurable extra-sigil selector for ER 2.0.2 with 1-24 virtual slots, named multi-character presets, usage filters and safe ownership transfer, a compact bilingual UI, Chinese IME support, localized character names, and an F8 hotkey. No ReShade or Luma dependency.",
-  "ModDll": "GBFR.ExtraSigilSlots20.Reloaded.dll",
+  "ModDll": "GBFR.ExtraSigilSlots.Reloaded.dll",
   "ModIcon": "",
   "ModR2RManagedDll32": "",
   "ModR2RManagedDll64": "",
@@ -14,7 +14,7 @@
   "CanUnload": false,
   "HasExports": false,
   "IsLibrary": false,
-  "ReleaseMetadataFileName": "GBFR.ExtraSigilSlots20.Reloaded.ReleaseMetadata.json",
+  "ReleaseMetadataFileName": "GBFR.ExtraSigilSlots.Reloaded.ReleaseMetadata.json",
   "PluginData": {},
   "IsUniversalMod": false,
   "ModDependencies": [

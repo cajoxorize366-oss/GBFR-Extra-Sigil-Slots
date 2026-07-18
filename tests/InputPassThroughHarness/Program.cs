@@ -5,11 +5,11 @@ if (args.Length != 1)
     throw new ArgumentException("Pass the managed build output directory.");
 
 string outputDirectory = Path.GetFullPath(args[0]);
-string assemblyPath = Path.Combine(outputDirectory, "GBFR.ExtraSigilSlots20.Reloaded.dll");
+string assemblyPath = Path.Combine(outputDirectory, "GBFR.ExtraSigilSlots.Reloaded.dll");
 PluginLoadContext context = new(assemblyPath);
 Assembly assembly = context.LoadFromAssemblyPath(assemblyPath);
 Type classifierType = assembly.GetType(
-    "GBFR.ExtraSigilSlots20.Reloaded.RawInputClassifier",
+    "GBFR.ExtraSigilSlots.Reloaded.RawInputClassifier",
     throwOnError: true)!;
 MethodInfo classifier = classifierType.GetMethod(
     "IsKeyboardOrMouse",

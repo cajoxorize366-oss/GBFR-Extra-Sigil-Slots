@@ -6,10 +6,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$nativeOutput = Join-Path $root "GBFR.ExtraSigilSlots20.Native\bin\$Configuration"
-$managedOutput = Join-Path $root "GBFR.ExtraSigilSlots20.Reloaded\bin\$Configuration"
-$nativeDll = Join-Path $nativeOutput 'GBFR.ExtraSigilSlots20.Native.dll'
-$managedDll = Join-Path $managedOutput 'GBFR.ExtraSigilSlots20.Reloaded.dll'
+$nativeOutput = Join-Path $root "GBFR.ExtraSigilSlots.Native\bin\$Configuration"
+$managedOutput = Join-Path $root "GBFR.ExtraSigilSlots.Reloaded\bin\$Configuration"
+$nativeDll = Join-Path $nativeOutput 'GBFR.ExtraSigilSlots.Native.dll'
+$managedDll = Join-Path $managedOutput 'GBFR.ExtraSigilSlots.Reloaded.dll'
 
 if (-not (Test-Path -LiteralPath $nativeDll -PathType Leaf)) {
     throw "Build the native $Configuration configuration first: $nativeDll"
@@ -31,6 +31,9 @@ function Invoke-Harness {
 
 Invoke-Harness `
     -Project (Join-Path $PSScriptRoot 'SlotConfigHarness\SlotConfigHarness.csproj') `
+    -OutputDirectory $nativeOutput
+Invoke-Harness `
+    -Project (Join-Path $PSScriptRoot 'PresentBridgeHarness\PresentBridgeHarness.csproj') `
     -OutputDirectory $nativeOutput
 Invoke-Harness `
     -Project (Join-Path $PSScriptRoot 'PresetStoreHarness\PresetStoreHarness.csproj') `

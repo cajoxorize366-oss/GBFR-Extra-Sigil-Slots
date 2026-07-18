@@ -51,7 +51,7 @@ bool ReloadNameTable(std::string_view language)
 {
    const std::string normalized_language = language == "en" ? "en" : "zh-CN";
    const std::filesystem::path path =
-      g_module_directory / ("GBFR-ExtraSigilSlots20.names." + normalized_language + ".tsv");
+      g_module_directory / ("GBFR-ExtraSigilSlots.names." + normalized_language + ".tsv");
    if (!std::filesystem::exists(path))
    {
       Log("Name table is missing: " + path.filename().string());

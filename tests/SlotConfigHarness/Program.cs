@@ -5,7 +5,7 @@ if (args.Length != 1)
     throw new ArgumentException("Pass the native build output directory.");
 
 string outputDirectory = Path.GetFullPath(args[0]);
-string nativeSource = Path.Combine(outputDirectory, "GBFR.ExtraSigilSlots20.Native.dll");
+string nativeSource = Path.Combine(outputDirectory, "GBFR.ExtraSigilSlots.Native.dll");
 (string Label, string? Raw, int Expected)[] cases =
 [
     ("missing", null, 8),
@@ -30,11 +30,11 @@ foreach ((string label, string? raw, int expected) in cases)
 {
     string testDirectory = Path.Combine(
         Path.GetTempPath(),
-        "GBFR20-slot-config-" + Guid.NewGuid().ToString("N"));
+        "GBFRES-slot-config-" + Guid.NewGuid().ToString("N"));
     Directory.CreateDirectory(testDirectory);
     try
     {
-        string nativePath = Path.Combine(testDirectory, "GBFR.ExtraSigilSlots20.Native.dll");
+        string nativePath = Path.Combine(testDirectory, "GBFR.ExtraSigilSlots.Native.dll");
         File.Copy(nativeSource, nativePath);
         string iniPath = Path.Combine(testDirectory, "GBFR-ExtraSigilSlotsNumConfig.ini");
         StringBuilder ini = new();
@@ -94,11 +94,11 @@ foreach ((string label, string? raw, int expected) in cases)
 
 string shrinkDirectory = Path.Combine(
     Path.GetTempPath(),
-    "GBFR20-slot-shrink-" + Guid.NewGuid().ToString("N"));
+    "GBFRES-slot-shrink-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(shrinkDirectory);
 try
 {
-    string nativePath = Path.Combine(shrinkDirectory, "GBFR.ExtraSigilSlots20.Native.dll");
+    string nativePath = Path.Combine(shrinkDirectory, "GBFR.ExtraSigilSlots.Native.dll");
     File.Copy(nativeSource, nativePath);
     string iniPath = Path.Combine(shrinkDirectory, "GBFR-ExtraSigilSlotsNumConfig.ini");
     File.WriteAllText(

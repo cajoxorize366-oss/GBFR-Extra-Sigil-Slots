@@ -5,11 +5,11 @@ using Reloaded.Imgui.Hook.Implementations;
 using Reloaded.Mod.Interfaces;
 using Reloaded.Mod.Interfaces.Internal;
 
-namespace GBFR.ExtraSigilSlots20.Reloaded;
+namespace GBFR.ExtraSigilSlots.Reloaded;
 
 public sealed partial class Mod : IMod
 {
-    private const string ModId = "GBFR.ExtraSigilSlots20.Reloaded";
+    private const string ModId = "GBFR.ExtraSigilSlots.Reloaded";
 
     private readonly object _lifecycleLock = new();
     private readonly object _imguiOperationLock = new();
@@ -40,8 +40,8 @@ public sealed partial class Mod : IMod
 
     public void Start(IModLoaderV1 loader) => QueueStart(loader, ModId);
 
-    public void StartEx(IModLoaderV1 loader, IModConfigV1 config) =>
-        QueueStart(loader, config.ModId);
+    public void StartEx(IModLoaderV1 loader, IModConfigV1 _) =>
+        QueueStart(loader, ModId);
 
     public void Suspend()
     {
@@ -105,13 +105,15 @@ public sealed partial class Mod : IMod
             {
                 _fileLog?.Dispose();
                 _fileLog = new StreamWriter(
-                    Path.Combine(modDirectory, "ExtraSigilSlots20.Reloaded.log"),
+                    Path.Combine(modDirectory, "ExtraSigilSlots.Reloaded.log"),
                     append: false
                 )
                 {
                     AutoFlush = true,
                 };
             }
+
+            LegacyDataMigrator.Migrate(modDirectory, Log);
 
             if (loader.GetController<IReloadedHooks>() is not { } hooksController ||
                 !hooksController.TryGetTarget(out IReloadedHooks? hooks) ||

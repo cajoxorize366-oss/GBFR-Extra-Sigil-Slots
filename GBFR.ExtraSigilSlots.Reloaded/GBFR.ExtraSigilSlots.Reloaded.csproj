@@ -2,8 +2,8 @@
   <PropertyGroup>
     <TargetFramework>net8.0-windows</TargetFramework>
     <OutputType>Library</OutputType>
-    <AssemblyName>GBFR.ExtraSigilSlots20.Reloaded</AssemblyName>
-    <RootNamespace>GBFR.ExtraSigilSlots20.Reloaded</RootNamespace>
+    <AssemblyName>GBFR.ExtraSigilSlots.Reloaded</AssemblyName>
+    <RootNamespace>GBFR.ExtraSigilSlots.Reloaded</RootNamespace>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -23,20 +23,20 @@
     <None Include="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="Always" />
     <None Include="README-development.md" CopyToOutputDirectory="Always" />
     <None Include="README-safety-test.md" CopyToOutputDirectory="Always" />
-    <None Include="..\GBFR.ExtraSigilSlots20.Native\bin\$(Configuration)\GBFR.ExtraSigilSlots20.Native.dll"
-          Link="GBFR.ExtraSigilSlots20.Native.dll"
+    <None Include="..\GBFR.ExtraSigilSlots.Native\bin\$(Configuration)\GBFR.ExtraSigilSlots.Native.dll"
+          Link="GBFR.ExtraSigilSlots.Native.dll"
           CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\GBFR.ExtraSigilSlots20.Native\GBFR-ExtraSigilSlotsNumConfig.ini"
+    <None Include="..\GBFR.ExtraSigilSlots.Native\GBFR-ExtraSigilSlotsNumConfig.ini"
           Link="GBFR-ExtraSigilSlotsNumConfig.ini"
           CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\GBFR.ExtraSigilSlots20.Native\GBFR-ExtraSigilSlots20.names.en.tsv"
-          Link="GBFR-ExtraSigilSlots20.names.en.tsv"
+    <None Include="..\GBFR.ExtraSigilSlots.Native\GBFR-ExtraSigilSlots.names.en.tsv"
+          Link="GBFR-ExtraSigilSlots.names.en.tsv"
           CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\GBFR.ExtraSigilSlots20.Native\GBFR-ExtraSigilSlots20.names.zh-CN.tsv"
-          Link="GBFR-ExtraSigilSlots20.names.zh-CN.tsv"
+    <None Include="..\GBFR.ExtraSigilSlots.Native\GBFR-ExtraSigilSlots.names.zh-CN.tsv"
+          Link="GBFR-ExtraSigilSlots.names.zh-CN.tsv"
           CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\GBFR.ExtraSigilSlots20.Native\GBFR-ExtraSigilSlots20.compatibility.tsv"
-          Link="GBFR-ExtraSigilSlots20.compatibility.tsv"
+    <None Include="..\GBFR.ExtraSigilSlots.Native\GBFR-ExtraSigilSlots.compatibility.tsv"
+          Link="GBFR-ExtraSigilSlots.compatibility.tsv"
           CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

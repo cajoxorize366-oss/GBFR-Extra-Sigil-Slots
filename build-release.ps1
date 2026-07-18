@@ -5,17 +5,17 @@ param(
     [ValidateSet('x64')]
     [string]$Platform = 'x64',
     [ValidatePattern('^[0-9A-Za-z][0-9A-Za-z._-]*$')]
-    [string]$Version = '0.5.0'
+    [string]$Version = '0.6.0'
 )
 
 $ErrorActionPreference = 'Stop'
 
 $root = $PSScriptRoot
-$nativeProject = Join-Path $root 'GBFR.ExtraSigilSlots20.Native\GBFR.ExtraSigilSlots20.Native.vcxproj'
-$managedProject = Join-Path $root 'GBFR.ExtraSigilSlots20.Reloaded\GBFR.ExtraSigilSlots20.Reloaded.csproj'
-$managedOutput = Join-Path $root "GBFR.ExtraSigilSlots20.Reloaded\bin\$Configuration"
+$nativeProject = Join-Path $root 'GBFR.ExtraSigilSlots.Native\GBFR.ExtraSigilSlots.Native.vcxproj'
+$managedProject = Join-Path $root 'GBFR.ExtraSigilSlots.Reloaded\GBFR.ExtraSigilSlots.Reloaded.csproj'
+$managedOutput = Join-Path $root "GBFR.ExtraSigilSlots.Reloaded\bin\$Configuration"
 $distRoot = Join-Path $root 'dist'
-$packageDir = Join-Path $distRoot 'GBFR.ExtraSigilSlots20.Reloaded'
+$packageDir = Join-Path $distRoot 'GBFR.ExtraSigilSlots.Reloaded'
 $zipPath = Join-Path $distRoot "GBFR-Extra-Sigil-Slots-$Version.zip"
 
 $msbuild = $null
@@ -51,7 +51,20 @@ if ($LASTEXITCODE -ne 0) {
     throw "Native build failed with exit code $LASTEXITCODE."
 }
 
-& dotnet build $managedProject -c $Configuration --nologo
+& dotnet restore $managedProject `
+    --ignore-failed-sources `
+    --nologo `
+    -p:NuGetAudit=false
+if ($LASTEXITCODE -ne 0) {
+    throw "Managed restore failed with exit code $LASTEXITCODE."
+}
+
+& dotnet clean $managedProject -c $Configuration --nologo
+if ($LASTEXITCODE -ne 0) {
+    throw "Managed clean failed with exit code $LASTEXITCODE."
+}
+
+& dotnet build $managedProject -c $Configuration --nologo --no-incremental --no-restore
 if ($LASTEXITCODE -ne 0) {
     throw "Managed build failed with exit code $LASTEXITCODE."
 }
@@ -68,9 +81,20 @@ if (Test-Path -LiteralPath $distRoot) {
 New-Item -ItemType Directory -Path $packageDir | Out-Null
 Copy-Item -Path (Join-Path $managedOutput '*') -Destination $packageDir -Recurse -Force
 
+foreach ($requiredFile in @(
+    'GBFR.ExtraSigilSlots.Reloaded.dll',
+    'GBFR.ExtraSigilSlots.Native.dll'
+)) {
+    $requiredPath = Join-Path $packageDir $requiredFile
+    if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
+        throw "Required release file was not packaged: $requiredPath"
+    }
+}
+
 foreach ($excludedFile in @(
-    'GBFR.ExtraSigilSlots20.Reloaded.pdb',
+    'GBFR.ExtraSigilSlots.Reloaded.pdb',
     'GBFR-ExtraSigilSlots20.ini',
+    'GBFR-ExtraSigilSlots.presets.json',
     'GBFR-ExtraSigilSlots20.presets.json',
     'README-development.md'
 )) {
@@ -85,6 +109,13 @@ if (Test-Path -LiteralPath $runtimesPath) {
     Get-ChildItem -LiteralPath $runtimesPath -Directory |
         Where-Object { $_.Name -ne 'win-x64' } |
         Remove-Item -Recurse -Force
+}
+
+$legacyArtifact = Get-ChildItem -LiteralPath $packageDir -Recurse -File |
+    Where-Object { $_.Name -like '*ExtraSigilSlots20*' } |
+    Select-Object -First 1
+if ($legacyArtifact) {
+    throw "Legacy ExtraSigilSlots20 artifact was packaged: $($legacyArtifact.FullName)"
 }
 
 Compress-Archive -LiteralPath $packageDir -DestinationPath $zipPath -CompressionLevel Optimal

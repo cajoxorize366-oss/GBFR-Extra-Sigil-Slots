@@ -10,7 +10,7 @@
 
 #define GBFR20_CALL __cdecl
 
-constexpr uint32_t GBFR20_ABI_VERSION = 8;
+constexpr uint32_t GBFR20_ABI_VERSION = 9;
 constexpr uint32_t GBFR20_VIRTUAL_SLOT_CAPACITY = 24;
 constexpr uint32_t GBFR20_OWNER_CHARACTER_CAPACITY = 4;
 constexpr uint32_t GBFR20_PRESET_CHARACTER_CAPACITY = 32;
@@ -130,6 +130,12 @@ GBFR20_API uint32_t GBFR20_CALL GBFR20_GetAbiVersion();
 GBFR20_API int32_t GBFR20_CALL GBFR20_Initialize();
 GBFR20_API void GBFR20_CALL GBFR20_Tick();
 GBFR20_API void GBFR20_CALL GBFR20_Shutdown();
+GBFR20_API int32_t GBFR20_CALL GBFR20_InvokeOriginalPresent(
+   uint64_t original_function_address,
+   void* swap_chain,
+   uint32_t sync_interval,
+   uint32_t present_flags,
+   uint32_t* exception_code_out);
 GBFR20_API int32_t GBFR20_CALL GBFR20_GetState(
    GBFR20_RuntimeState* state,
    uint32_t state_size);

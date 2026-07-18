@@ -15,7 +15,7 @@
     <Keyword>Win32Proj</Keyword>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
     <Platform>x64</Platform>
-    <ProjectName>GBFR.ExtraSigilSlots20.Native</ProjectName>
+    <ProjectName>GBFR.ExtraSigilSlots.Native</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
@@ -38,7 +38,7 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
-    <TargetName>GBFR.ExtraSigilSlots20.Native</TargetName>
+    <TargetName>GBFR.ExtraSigilSlots.Native</TargetName>
     <TargetExt>.dll</TargetExt>
     <OutDir>$(ProjectDir)bin\$(Configuration)\</OutDir>
     <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
@@ -89,6 +89,7 @@
   <ItemGroup>
     <ClCompile Include="src\config_store.cpp" />
     <ClCompile Include="src\dllmain.cpp" />
+    <ClCompile Include="src\dxgi_present_bridge.cpp" />
     <ClCompile Include="src\exports.cpp" />
     <ClCompile Include="src\input_capture.cpp" />
     <ClCompile Include="src\inventory_store.cpp" />

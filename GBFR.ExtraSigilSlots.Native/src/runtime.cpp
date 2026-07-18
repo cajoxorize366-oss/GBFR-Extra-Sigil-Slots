@@ -20,7 +20,7 @@ void Initialize()
    g_module_directory = std::filesystem::path(module_path.data()).parent_path();
    g_config_path = g_module_directory / L"GBFR-ExtraSigilSlotsNumConfig.ini";
    g_compatibility_path =
-      g_module_directory / L"GBFR-ExtraSigilSlots20.compatibility.tsv";
+      g_module_directory / L"GBFR-ExtraSigilSlots.compatibility.tsv";
    LoadSettingsAndSelections();
 
    std::string language;

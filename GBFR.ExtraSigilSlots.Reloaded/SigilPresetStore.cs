@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json;
 
-namespace GBFR.ExtraSigilSlots20.Reloaded;
+namespace GBFR.ExtraSigilSlots.Reloaded;
 
 internal sealed class SigilPresetStore
 {
@@ -21,7 +21,7 @@ internal sealed class SigilPresetStore
 
     internal SigilPresetStore(string modDirectory, Action<string> log)
     {
-        _path = Path.Combine(modDirectory, "GBFR-ExtraSigilSlots20.presets.json");
+        _path = Path.Combine(modDirectory, "GBFR-ExtraSigilSlots.presets.json");
         _log = log;
         Load();
     }

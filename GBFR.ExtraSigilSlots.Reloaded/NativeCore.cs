@@ -2,17 +2,17 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace GBFR.ExtraSigilSlots20.Reloaded;
+namespace GBFR.ExtraSigilSlots.Reloaded;
 
 internal static unsafe partial class NativeCore
 {
-    internal const int AbiVersion = 8;
+    internal const int AbiVersion = 9;
     internal const int DefaultVirtualSlotCount = 8;
     internal const int VirtualSlotCapacity = 24;
     internal const int OwnerCharacterCapacity = 4;
     internal const int PresetCharacterCapacity = 32;
 
-    private const string LibraryName = "GBFR.ExtraSigilSlots20.Native.dll";
+    private const string LibraryName = "GBFR.ExtraSigilSlots.Native.dll";
     private static readonly object ResolverLock = new();
     private static string? _libraryPath;
     private static IntPtr _libraryHandle;
@@ -181,6 +181,19 @@ internal static unsafe partial class NativeCore
     internal static void Tick() => NativeTick();
 
     internal static void Shutdown() => NativeShutdown();
+
+    internal static int InvokeOriginalPresent(
+        ulong originalFunctionAddress,
+        IntPtr swapChain,
+        int syncInterval,
+        uint presentFlags,
+        out uint exceptionCode) =>
+        NativeInvokeOriginalPresent(
+            originalFunctionAddress,
+            swapChain,
+            unchecked((uint)syncInterval),
+            presentFlags,
+            out exceptionCode);
 
     internal static bool TryGetState(out RuntimeState state)
     {

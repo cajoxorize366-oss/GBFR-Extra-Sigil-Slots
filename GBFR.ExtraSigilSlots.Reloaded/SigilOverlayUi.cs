@@ -3,7 +3,7 @@ using Reloaded.Imgui.Hook;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace GBFR.ExtraSigilSlots20.Reloaded;
+namespace GBFR.ExtraSigilSlots.Reloaded;
 
 internal sealed unsafe partial class SigilOverlayUi : IDisposable
 {

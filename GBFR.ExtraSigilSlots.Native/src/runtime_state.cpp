@@ -47,7 +47,7 @@ int GetExpandedInternalSlotCount() noexcept
 
 void Log(const std::string& message)
 {
-   const std::string line = "[GBFR ExtraSigilSlots20 Native] " + message + "\n";
+   const std::string line = "[GBFR ExtraSigilSlots Native] " + message + "\n";
    OutputDebugStringA(line.c_str());
 }
 

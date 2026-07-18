@@ -1,7 +1,7 @@
 using DearImguiSharp;
 using System.Text;
 
-namespace GBFR.ExtraSigilSlots20.Reloaded;
+namespace GBFR.ExtraSigilSlots.Reloaded;
 
 internal sealed unsafe partial class SigilOverlayUi
 {
@@ -328,20 +328,20 @@ internal sealed unsafe partial class SigilOverlayUi
     }
 
     private static string PresetManagerTitle(bool english) => english
-        ? "Manage presets##GBFR20PresetManager"
-        : "管理预设##GBFR20PresetManager";
+        ? "Manage presets##GBFRESPresetManager"
+        : "管理预设##GBFRESPresetManager";
 
     private static string PresetNameTitle(bool english) => english
-        ? "Preset name##GBFR20PresetName"
-        : "预设名称##GBFR20PresetName";
+        ? "Preset name##GBFRESPresetName"
+        : "预设名称##GBFRESPresetName";
 
     private static string BodyBlockedTitle(bool english) => english
-        ? "Body-used sigil##GBFR20BodyBlocked"
-        : "本体已使用的因子##GBFR20BodyBlocked";
+        ? "Body-used sigil##GBFRESBodyBlocked"
+        : "本体已使用的因子##GBFRESBodyBlocked";
 
     private static string TransferTitle(bool english) => english
-        ? "Transfer extension sigil##GBFR20Transfer"
-        : "转移扩展因子##GBFR20Transfer";
+        ? "Transfer extension sigil##GBFRESTransfer"
+        : "转移扩展因子##GBFRESTransfer";
 
     private void DisposePresetUiResources()
     {
