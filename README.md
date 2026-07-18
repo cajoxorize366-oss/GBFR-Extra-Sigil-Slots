@@ -4,6 +4,8 @@ Reloaded-II version of the 20-sigil-slot mod for Granblue Fantasy: Relink ER 2.0
 
 The repository contains a C++ native hook and a C# Reloaded-II loader, but they are packaged as one Reloaded-II mod.
 
+The compact selector opens with `F8`, supports Simplified Chinese and English (including Chinese IME input in the search field), displays the current character by name, and reports the complete valid physical-sigil scan count separately from the filtered picker match count.
+
 ## Build and package
 
 Requirements:
@@ -22,7 +24,7 @@ powershell -ExecutionPolicy Bypass -File .\build-release.ps1
 The installable archive is generated at:
 
 ```text
-dist\GBFR-Extra-Sigil-Slots-0.3.0-test7-direct-battle-hook.zip
+dist\GBFR-Extra-Sigil-Slots-0.3.5.zip
 ```
 
 Extract the `GBFR.ExtraSigilSlots20.Reloaded` folder from the ZIP into Reloaded-II's `Mods` directory. The package intentionally omits `GBFR-ExtraSigilSlots20.ini` so updating the mod does not overwrite an existing user configuration.

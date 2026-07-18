@@ -6,7 +6,7 @@ namespace GBFR.ExtraSigilSlots20.Reloaded;
 
 internal static unsafe class NativeCore
 {
-    internal const int AbiVersion = 5;
+    internal const int AbiVersion = 6;
     internal const int VirtualSlotCount = 8;
     internal const int OwnerCharacterCapacity = 4;
 
@@ -67,6 +67,7 @@ internal static unsafe class NativeCore
         internal int AutoApply;
         internal int ShowEquipped;
         internal int ToggleKey;
+        internal int Language;
         internal uint AuthorizedStatusCount;
         internal uint AuthorizedCharacterHash;
         internal ulong AuthorizedStatusAddress;
@@ -233,6 +234,8 @@ internal static unsafe class NativeCore
 
     internal static bool SetToggleKey(int virtualKey) => NativeSetToggleKey(virtualKey) != 0;
 
+    internal static bool SetLanguage(int language) => NativeSetLanguage(language) != 0;
+
     internal static bool SetInputCapture(bool requested) =>
         NativeSetInputCapture(requested ? 1 : 0) != 0;
 
@@ -320,6 +323,9 @@ internal static unsafe class NativeCore
     private static extern int GBFR20_SetToggleKey(int virtualKey);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    private static extern int GBFR20_SetLanguage(int language);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     private static extern int GBFR20_SetInputCapture(int requested);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
@@ -356,6 +362,7 @@ internal static unsafe class NativeCore
     private static int NativeSetAutoApply(int enabled) => GBFR20_SetAutoApply(enabled);
     private static int NativeSetShowEquipped(int enabled) => GBFR20_SetShowEquipped(enabled);
     private static int NativeSetToggleKey(int key) => GBFR20_SetToggleKey(key);
+    private static int NativeSetLanguage(int language) => GBFR20_SetLanguage(language);
     private static int NativeSetInputCapture(int requested) => GBFR20_SetInputCapture(requested);
     private static int NativeGetInputCaptureActive() => GBFR20_GetInputCaptureActive();
     private static int NativeIsInventoryDirty() => GBFR20_IsInventoryDirty();

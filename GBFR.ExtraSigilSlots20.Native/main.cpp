@@ -61,6 +61,7 @@ constexpr int kNativeInternalSlotCount = 13;
 constexpr int kVirtualSlotCount = 8;
 constexpr int kExpandedInternalSlotCount = kNativeInternalSlotCount + kVirtualSlotCount;
 constexpr int kMainGemCapacity = 5100;
+constexpr int kCurrentSettingsVersion = 1;
 constexpr uint32_t kExpectedCompatibilityMappingCount = 199;
 constexpr uintptr_t kMainGemArrayOffset = 0x25D0;
 constexpr uintptr_t kUiSelectedCharacterHashOffset = 0x5F0;
@@ -204,7 +205,7 @@ struct IatPatch
 
 struct UiSettings
 {
-   int toggle_key = VK_NUMPAD8;
+   int toggle_key = VK_F8;
    bool show_equipped = false;
    bool auto_apply = true;
    std::string language = "zh-CN";
@@ -344,8 +345,10 @@ XInputGetStateFn g_original_xinput_get_state = nullptr;
 
 UiSettings g_settings;
 std::mutex g_settings_mutex;
+std::shared_mutex g_name_table_mutex;
 std::unordered_map<uint32_t, std::string> g_sigil_names;
 std::unordered_map<uint32_t, std::string> g_trait_names;
+bool g_names_are_english = false;
 std::mutex g_inventory_snapshot_mutex;
 std::vector<InventoryItem> g_inventory_snapshot;
 
@@ -1648,15 +1651,29 @@ std::array<uint32_t, kVirtualSlotCount> ParseSlots(std::wstring_view text)
 void LoadSettingsAndSelections()
 {
    UiSettings settings;
+   const int stored_settings_version = static_cast<int>(GetPrivateProfileIntW(
+      L"Settings", L"ConfigVersion", 0, g_config_path.c_str()));
+   int toggle_key = static_cast<int>(GetPrivateProfileIntW(
+      L"Settings", L"ToggleKey", VK_F8, g_config_path.c_str()));
+   if (stored_settings_version < kCurrentSettingsVersion && toggle_key == VK_NUMPAD8)
+   {
+      toggle_key = VK_F8;
+      WriteIniInt(L"Settings", L"ToggleKey", toggle_key);
+   }
+   if (stored_settings_version < kCurrentSettingsVersion)
+      WriteIniInt(L"Settings", L"ConfigVersion", kCurrentSettingsVersion);
    settings.toggle_key = std::clamp(
-      static_cast<int>(GetPrivateProfileIntW(L"Settings", L"ToggleKey", VK_NUMPAD8, g_config_path.c_str())),
+      toggle_key,
       1,
       255);
    settings.show_equipped =
       GetPrivateProfileIntW(L"Settings", L"ShowEquipped", 0, g_config_path.c_str()) != 0;
-   settings.auto_apply =
-      GetPrivateProfileIntW(L"Settings", L"AutoApply", 1, g_config_path.c_str()) != 0;
-   settings.language = WideToUtf8(ReadIniString(L"Settings", L"Language", L"zh-CN"));
+   settings.auto_apply = true;
+   if (GetPrivateProfileIntW(L"Settings", L"AutoApply", 1, g_config_path.c_str()) == 0)
+      WriteIniInt(L"Settings", L"AutoApply", 1);
+   const std::string configured_language =
+      WideToUtf8(ReadIniString(L"Settings", L"Language", L"zh-CN"));
+   settings.language = configured_language == "en" ? "en" : "zh-CN";
    {
       std::scoped_lock lock(g_settings_mutex);
       g_settings = std::move(settings);
@@ -1720,6 +1737,7 @@ void SaveUiSettings()
       std::scoped_lock lock(g_settings_mutex);
       settings = g_settings;
    }
+   WriteIniInt(L"Settings", L"ConfigVersion", kCurrentSettingsVersion);
    WriteIniInt(L"Settings", L"ToggleKey", settings.toggle_key);
    WriteIniInt(L"Settings", L"ShowEquipped", settings.show_equipped ? 1 : 0);
    WriteIniInt(L"Settings", L"AutoApply", settings.auto_apply ? 1 : 0);
@@ -1757,6 +1775,24 @@ void LoadNameTable(const std::filesystem::path& path)
       else if (line[0] == 'T')
          g_trait_names[hash] = std::move(text);
    }
+}
+
+bool ReloadNameTable(std::string_view language)
+{
+   const std::string normalized_language = language == "en" ? "en" : "zh-CN";
+   const std::filesystem::path path =
+      g_module_directory / ("GBFR-ExtraSigilSlots20.names." + normalized_language + ".tsv");
+   if (!std::filesystem::exists(path))
+   {
+      Log("Name table is missing: " + path.filename().string());
+      return false;
+   }
+   std::unique_lock lock(g_name_table_mutex);
+   g_sigil_names.clear();
+   g_trait_names.clear();
+   LoadNameTable(path);
+   g_names_are_english = normalized_language == "en";
+   return true;
 }
 
 bool LoadCompatibilityTable(const std::filesystem::path& path)
@@ -2223,6 +2259,8 @@ bool RefreshInventorySnapshot()
 
    std::vector<InventoryItem> snapshot;
    snapshot.reserve(records.size());
+   std::shared_lock name_lock(g_name_table_mutex);
+   const bool english = g_names_are_english;
    for (const RawInventoryRecord& record : records)
    {
       const GemData& gem = record.gem;
@@ -2249,16 +2287,14 @@ bool RefreshInventorySnapshot()
          label << " + " << trait2 << " Lv" << gem.trait2_level;
       label << "  [#" << gem.slot_id << ']';
       if (item.equipped)
-         label << "  (equipped)";
+         label << (english ? "  (equipped)" : "  (已装备)");
       else if (item.virtual_owner_character_hash != 0)
-         label << "  (virtual 0x" << ToUpperHex(item.virtual_owner_character_hash)
-               << ":" << (kNativeInternalSlotCount + item.virtual_owner_slot) << ')';
-      if (item.required_character_hash != 0)
-         label << "  (requires 0x" << ToUpperHex(item.required_character_hash) << ')';
+         label << (english ? "  (used in an extra slot)" : "  (已用于额外槽)");
       item.label = label.str();
       item.searchable = ToLowerAscii(item.label);
       snapshot.push_back(std::move(item));
    }
+   name_lock.unlock();
 
    std::sort(snapshot.begin(), snapshot.end(), [](const InventoryItem& left, const InventoryItem& right) {
       if (left.equipped != right.equipped)
@@ -3064,7 +3100,7 @@ void Initialize()
       std::scoped_lock lock(g_settings_mutex);
       language = g_settings.language == "en" ? "en" : "zh-CN";
    }
-   LoadNameTable(g_module_directory / ("GBFR-ExtraSigilSlots20.names." + language + ".tsv"));
+   (void)ReloadNameTable(language);
    if (!LoadCompatibilityTable(g_compatibility_path))
    {
       SetRuntimeMessage(
@@ -3255,6 +3291,7 @@ int32_t GBFR20_CALL GBFR20_GetState(GBFR20_RuntimeState* state, uint32_t state_s
       snapshot.auto_apply = g_settings.auto_apply ? 1 : 0;
       snapshot.show_equipped = g_settings.show_equipped ? 1 : 0;
       snapshot.toggle_key = g_settings.toggle_key;
+      snapshot.language = g_settings.language == "en" ? 1 : 0;
    }
    {
       std::shared_lock lock(g_authorization_mutex);
@@ -3432,6 +3469,27 @@ int32_t GBFR20_CALL GBFR20_SetToggleKey(int32_t virtual_key)
       g_settings.toggle_key = virtual_key;
    }
    SaveUiSettings();
+   return 1;
+}
+
+int32_t GBFR20_CALL GBFR20_SetLanguage(int32_t language)
+{
+   if (language != 0 && language != 1)
+      return 0;
+   const std::string language_code = language == 1 ? "en" : "zh-CN";
+   {
+      std::scoped_lock lock(g_settings_mutex);
+      if (g_settings.language == language_code)
+         return 1;
+   }
+   if (!ReloadNameTable(language_code))
+      return 0;
+   {
+      std::scoped_lock lock(g_settings_mutex);
+      g_settings.language = language_code;
+   }
+   SaveUiSettings();
+   MarkInventoryDirty();
    return 1;
 }
 

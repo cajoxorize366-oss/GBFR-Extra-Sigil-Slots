@@ -121,6 +121,11 @@ internal sealed unsafe class CjkConfiguredDx11Hook : IImguiHook
                     glyphs.Add(character);
             }
         }
+        foreach (char character in UiLocalization.GlyphSeed)
+        {
+            if (character != '\0' && !char.IsSurrogate(character))
+                glyphs.Add(character);
+        }
         glyphs.Add(0xFFFD);
 
         List<ushort> ranges = [];

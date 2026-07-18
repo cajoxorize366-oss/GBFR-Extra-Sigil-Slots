@@ -1,0 +1,56 @@
+namespace GBFR.ExtraSigilSlots20.Reloaded;
+
+internal static class UiLocalization
+{
+    internal const int Chinese = 0;
+    internal const int English = 1;
+
+    internal const string GlyphSeed =
+        "：（）当前语言中文英文当前角色未检测到当前角色未知角色刷新因子扫描出因子数量" +
+        "当前状态可修改不可修改额外槽空缺失库存槽选择因子搜索因子名称或特性" +
+        "匹配的可选因子清空此槽取消已装备已用于额外槽" +
+        "主角格兰姬塔卡塔莉娜拉卡姆伊欧欧根萝赛塔菲莉兰斯洛特巴恩珀西瓦尔" +
+        "齐格飞夏洛特尤达拉哈娜露梅巴萨拉卡塞达冈达葛萨卡莉奥丝特罗伊德" +
+        "希耶提索恩圣德芬伽兰查玛琪拉菲菈贝阿朵丽丝尤斯提斯芙劳菲迪埃尔";
+
+    internal static bool IsEnglish(int language) => language == English;
+
+    internal static string CharacterName(uint hash, bool english)
+    {
+        if (hash == 0)
+            return english ? "No current character detected" : "未检测到当前角色";
+        (string Chinese, string English) names = hash switch
+        {
+            0x2A26B1B2 => ("主角（格兰/姬塔）", "Captain (Gran/Djeeta)"),
+            0x18E2F9F9 => ("卡塔莉娜", "Katalina"),
+            0x079DF0CC => ("拉卡姆", "Rackam"),
+            0x4D0A60C3 => ("伊欧", "Io"),
+            0xDD7A151E => ("欧根", "Eugen"),
+            0xC8616284 => ("萝赛塔", "Rosetta"),
+            0xC3FFD418 => ("菲莉", "Ferry"),
+            0x22E437E5 => ("兰斯洛特", "Lancelot"),
+            0x2EBE91D5 => ("巴恩", "Vane"),
+            0xBDEF7181 => ("珀西瓦尔", "Percival"),
+            0x627BCB0D => ("齐格飞", "Siegfried"),
+            0xFD3BE362 => ("夏洛特", "Charlotta"),
+            0xFC6CDF7B => ("尤达拉哈", "Yodarha"),
+            0xE7053919 => ("娜露梅", "Narmaya"),
+            0x978E4B18 => ("巴萨拉卡", "Vaseraga"),
+            0x0D21B430 => ("塞达", "Zeta"),
+            0xF0EB77EF => ("冈达葛萨", "Ghandagoza"),
+            0xAA66178A => ("卡莉奥丝特罗", "Cagliostro"),
+            0xA3A3CB2F => ("伊德", "Id"),
+            0x718E1A14 => ("希耶提", "Seofon"),
+            0x296471BE => ("索恩", "Tweyen"),
+            0xBAD16E3B => ("圣德芬", "Sandalphon"),
+            0x1BB37EF0 => ("伽兰查", "Gallanza"),
+            0x25D46F4B => ("玛琪拉菲菈", "Maglielle"),
+            0x9A8AF295 => ("贝阿朵丽丝", "Beatrix"),
+            0x9B15CFB1 => ("尤斯提斯", "Eustace"),
+            0x646C3168 => ("芙劳", "Fraux"),
+            0x74DD4C79 => ("菲迪埃尔", "Fediel"),
+            _ => ("未知角色", "Unknown character"),
+        };
+        return english ? names.English : names.Chinese;
+    }
+}

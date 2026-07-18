@@ -10,7 +10,7 @@
 
 #define GBFR20_CALL __cdecl
 
-constexpr uint32_t GBFR20_ABI_VERSION = 5;
+constexpr uint32_t GBFR20_ABI_VERSION = 6;
 constexpr uint32_t GBFR20_VIRTUAL_SLOT_COUNT = 8;
 constexpr uint32_t GBFR20_OWNER_CHARACTER_CAPACITY = 4;
 
@@ -63,6 +63,7 @@ struct GBFR20_RuntimeState
    int32_t auto_apply;
    int32_t show_equipped;
    int32_t toggle_key;
+   int32_t language;
    uint32_t authorized_status_count;
    uint32_t authorized_character_hash;
    uint64_t authorized_status_address;
@@ -95,7 +96,7 @@ struct GBFR20_RuntimeState
 #pragma pack(pop)
 
 static_assert(sizeof(GBFR20_GemData) == 0x24);
-static_assert(sizeof(GBFR20_RuntimeState) == 264);
+static_assert(sizeof(GBFR20_RuntimeState) == 268);
 
 GBFR20_API uint32_t GBFR20_CALL GBFR20_GetAbiVersion();
 GBFR20_API int32_t GBFR20_CALL GBFR20_Initialize();
@@ -127,6 +128,7 @@ GBFR20_API uint32_t GBFR20_CALL GBFR20_RequestApply(uint32_t character_hash);
 GBFR20_API int32_t GBFR20_CALL GBFR20_SetAutoApply(int32_t enabled);
 GBFR20_API int32_t GBFR20_CALL GBFR20_SetShowEquipped(int32_t enabled);
 GBFR20_API int32_t GBFR20_CALL GBFR20_SetToggleKey(int32_t virtual_key);
+GBFR20_API int32_t GBFR20_CALL GBFR20_SetLanguage(int32_t language);
 GBFR20_API int32_t GBFR20_CALL GBFR20_SetInputCapture(int32_t requested);
 GBFR20_API int32_t GBFR20_CALL GBFR20_GetInputCaptureActive();
 GBFR20_API int32_t GBFR20_CALL GBFR20_IsInventoryDirty();

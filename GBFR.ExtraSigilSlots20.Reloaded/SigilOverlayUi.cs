@@ -22,21 +22,18 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
     private readonly byte[] _labelBuffer = new byte[1024];
     private readonly ImVec2 _zeroSize = MakeVec2(0.0f, 0.0f);
     private readonly ImVec2 _windowPosition = MakeVec2(0.0f, 0.0f);
-    private readonly ImVec2 _windowSize = MakeVec2(620.0f, 500.0f);
+    private readonly ImVec2 _windowSize = MakeVec2(620.0f, 450.0f);
     private readonly ImVec2 _buttonSize = MakeVec2(-45.0f, 0.0f);
     private readonly ImVec2 _pickerSize = MakeVec2(900.0f, 620.0f);
     private readonly ImVec2 _childSize = MakeVec2(0.0f, -42.0f);
     private readonly ImVec4 _successColor = MakeVec4(0.35f, 1.0f, 0.45f, 1.0f);
-    private readonly ImVec4 _errorColor = MakeVec4(1.0f, 0.35f, 0.25f, 1.0f);
-    private readonly ImVec4 _captureColor = MakeVec4(1.0f, 0.8f, 0.2f, 1.0f);
+    private readonly ImVec4 _readOnlyColor = MakeVec4(1.0f, 0.8f, 0.2f, 1.0f);
 
     private NativeCore.RuntimeState _state;
     private uint[] _selection = new uint[NativeCore.VirtualSlotCount];
     private uint _selectionCharacterHash;
     private bool _windowOpen;
     private bool _toggleWasDown;
-    private bool _captureKey;
-    private bool _captureWaitForRelease;
     private int _pickerSlot = -1;
     private bool _pickerOpen = true;
     private int _lastLoggedInventoryCount = -1;
@@ -84,9 +81,12 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
         ImGui.SetNextWindowPos(_windowPosition, ImGuiCondFirstUseEver, _zeroSize);
         ImGui.SetNextWindowSize(_windowSize, ImGuiCondFirstUseEver);
 
+        bool english = UiLocalization.IsEnglish(_state.Language);
         bool open = _windowOpen;
         if (!ImGui.Begin(
-                "GBFR Extra Sigil Slots (12 + 8)##Reloaded",
+                english
+                    ? "GBFR Extra Sigil Slots (12 + 8)##Reloaded"
+                    : "GBFR 20 因子槽（12 + 8）##Reloaded",
                 ref open,
                 ImGuiWindowFlagsNoCollapse))
         {
@@ -96,95 +96,29 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
         }
         SetWindowOpen(open);
 
-        string runtimeMessage = NativeCore.GetRuntimeMessage();
-        ImGui.TextColored(
-            _state.RuntimeMessageIsError != 0 ? _errorColor : _successColor,
-            string.IsNullOrEmpty(runtimeMessage) ? "Native core has no status message." : runtimeMessage
+        english = DrawLanguageSelector(english);
+        uint displayCharacterHash = ResolveDisplayCharacterHash();
+        string characterName = UiLocalization.CharacterName(displayCharacterHash, english);
+        ImGui.Text(
+            english
+                ? $"Current character: {characterName}"
+                : $"当前角色：{characterName}"
         );
 
-        if (_state.UiSelectedCharacterHash != 0)
-        {
-            ImGui.Text($"Equipment Q/E selected character: 0x{_state.UiSelectedCharacterHash:X8}");
-        }
-        else
-        {
-            ImGui.TextWrapped(
-                "Waiting for the equipment-selected character. Open Equipment and switch character once."
-            );
-        }
-
-        ImGui.TextDisabled(
-            $"Native status 0x{_state.LastRebuiltCharacterHash:X8}, context {_state.LastContextMode}; " +
-            $"Present TID {_state.OverlayThreadId}, owner TID {_state.OwnerThreadId}."
-        );
-        ImGui.TextDisabled(
-            $"Authorized {_state.AuthorizedStatusCount}; last 0x{_state.AuthorizedCharacterHash:X8} " +
-            $"@ 0x{_state.AuthorizedStatusAddress:X}; UI/source mode {_state.UiMode}/{_state.SourceMode}."
-        );
-        string editSession = _state.EditSessionState switch
-        {
-            1 => "equipment editable",
-            2 => "mission locked",
-            3 => "free-training editable",
-            _ => "unknown locked",
-        };
-        ImGui.TextDisabled(
-            $"Edit session: {editSession}; observed local 0x{_state.ObservedCharacterHash:X8} " +
-            $"@ 0x{_state.ObservedStatusAddress:X}, context {_state.ObservedStatusContext}; " +
-            $"rebind attempts {_state.LifecycleRebindAttempts}."
-        );
-        string naturalBind = _state.NaturalBindResult switch
-        {
-            1 => "CONFIRMED",
-            2 => "in progress",
-            -1 => "rejected: not context 1",
-            -2 => "legacy owner rejection (inactive in test7)",
-            -3 => "legacy status-map rejection (inactive in test7)",
-            -4 => "rejected: selected sigil became invalid",
-            -5 => "rejected: slot sequence/status changed",
-            -6 => "rejected: final status validation",
-            -7 => "rejected: GemData copy failed",
-            _ => "not observed",
-        };
-        ImGui.TextColored(
-            _state.NaturalBindResult == 1
-                ? _successColor
-                : _state.NaturalBindResult < 0
-                    ? _errorColor
-                    : _captureColor,
-            $"Direct Trait contribution: {naturalBind}; attempts/successes " +
-            $"{_state.NaturalBindAttempts}/{_state.NaturalBindSuccesses}; " +
-            $"0x{_state.NaturalBindCharacterHash:X8} @ 0x{_state.NaturalBindStatusAddress:X}, " +
-            $"context {_state.NaturalBindContext}, " +
-            $"{_state.NaturalBindInjectedCount}/{_state.NaturalBindExpectedCount}."
-        );
-        string battleTarget = _state.NaturalBindOwnerKey != 0
-            ? $"legacy owner key 0x{_state.NaturalBindOwnerKey:X8} -> status " +
-              $"0x{_state.NaturalBindOwnerStatusAddress:X}"
-            : $"direct status 0x{_state.NaturalBindOwnerStatusAddress:X}";
-        ImGui.TextDisabled(
-            $"Battle target: {battleTarget}. No owner/session gate is used for injection."
-        );
-        ImGui.TextDisabled($"Owner snapshot characters: {_state.OwnerCharacterCount}.");
-        ImGui.TextDisabled(
-            $"Input gate requested/effective {_state.InputCaptureRequested}/{_state.InputCaptureEffective}; " +
-            $"IAT {_state.InputIatHooksReady}, DirectInput {_state.DirectInputHookReady}."
-        );
-        if (!canEdit)
-        {
-            string reason = _state.EditSessionState == 2
-                ? "Read-only: normal mission, ready, loading, or mission menu is locked."
-                : _state.EditSessionState == 0
-                    ? "Read-only: the current session has not been proven editable."
-                    : "Read-only: no exact local character/status is available.";
-            ImGui.TextColored(
-                _captureColor,
-                reason
-            );
-        }
-
-        if (ImGui.SmallButton("Refresh inventory"))
+        if (ImGui.SmallButton(english ? "Refresh sigils" : "刷新因子"))
             RefreshInventory();
+        ImGui.SameLine(0.0f, -1.0f);
+        ImGui.Text(
+            english
+                ? $"Scanned sigils: {_inventory.Count}"
+                : $"扫描出因子数量：{_inventory.Count}"
+        );
+        ImGui.TextColored(
+            canEdit ? _successColor : _readOnlyColor,
+            english
+                ? canEdit ? "Current state: editable" : "Current state: read-only"
+                : canEdit ? "当前状态可修改" : "当前状态不可修改"
+        );
 
         ImGui.Separator();
         bool requestPickerPopup = false;
@@ -195,7 +129,7 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
             ImGui.Text($"{NativeSlotCount + index:00}");
             ImGui.SameLine(0.0f, -1.0f);
             uint slotId = _selection[index];
-            string label = GetSelectedLabel(slotId);
+            string label = GetSelectedLabel(slotId, english);
             if (ImGui.Button(label, _buttonSize))
             {
                 _pickerSlot = index;
@@ -216,59 +150,27 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
             ImGui.PopID();
         }
         ImGui.EndDisabled();
+        string pickerTitle = english
+            ? "Select an inventory sigil##Reloaded"
+            : "选择库存因子##Reloaded";
         if (requestPickerPopup)
-            ImGui.OpenPopupStr("Select an inventory sigil##Reloaded", 0);
+            ImGui.OpenPopupStr(pickerTitle, 0);
 
-        ImGui.Separator();
-        bool autoApply = _state.AutoApply != 0;
-        if (ImGui.Checkbox("Queue a native status rebuild immediately", ref autoApply))
-        {
-            NativeCore.SetAutoApply(autoApply);
-            _state.AutoApply = autoApply ? 1 : 0;
-        }
-        if (!autoApply)
-        {
-            ImGui.SameLine(0.0f, -1.0f);
-            ImGui.BeginDisabled(!canEdit);
-            if (ImGui.Button("Apply now", _zeroSize))
-                NativeCore.RequestApply(characterHash);
-            ImGui.EndDisabled();
-        }
-
-        ImGui.Text($"Toggle key: {KeyName(_state.ToggleKey)}");
-        ImGui.SameLine(0.0f, -1.0f);
-        if (!_captureKey)
-        {
-            if (ImGui.Button("Change key", _zeroSize))
-            {
-                _captureKey = true;
-                _captureWaitForRelease = true;
-            }
-        }
-        else
-        {
-            ImGui.TextColored(
-                _captureColor,
-                "Release keys, then press a new key (Esc cancels)"
-            );
-        }
-
-        ImGui.TextDisabled(
-            "Selections are saved per character. SaveData and WORN_BY are never written."
-        );
-
-        DrawPicker(characterHash, canEdit);
+        DrawPicker(characterHash, canEdit, english, pickerTitle);
         ImGui.End();
     }
 
     internal void Close()
     {
         SetWindowOpen(false);
-        _captureKey = false;
         _pickerSlot = -1;
     }
 
-    private void DrawPicker(uint characterHash, bool canEdit)
+    private void DrawPicker(
+        uint characterHash,
+        bool canEdit,
+        bool english,
+        string pickerTitle)
     {
         if (_pickerSlot < 0 || _pickerSlot >= NativeCore.VirtualSlotCount)
             return;
@@ -278,7 +180,7 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
 
         ImGui.SetNextWindowSize(_pickerSize, 1 << 3);
         if (!ImGui.BeginPopupModal(
-                "Select an inventory sigil##Reloaded",
+                pickerTitle,
                 ref _pickerOpen,
                 ImGuiWindowFlagsNoSavedSettings))
         {
@@ -287,13 +189,17 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
             return;
         }
 
-        ImGui.Text($"Extra slot {NativeSlotCount + _pickerSlot}");
+        ImGui.Text(
+            english
+                ? $"Extra slot {NativeSlotCount + _pickerSlot}"
+                : $"额外槽 {NativeSlotCount + _pickerSlot}"
+        );
         ImGui.SetNextItemWidth(-190.0f);
         fixed (byte* searchBuffer = _searchBuffer)
         {
             ImGui.InputTextWithHint(
                 "##sigil_search",
-                "Search sigil or either trait",
+                english ? "Search sigil name or trait" : "搜索因子名称或特性",
                 (sbyte*)searchBuffer,
                 (IntPtr)_searchBuffer.Length,
                 0,
@@ -301,13 +207,24 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
                 IntPtr.Zero
             );
         }
+        if (!english && RepairChineseSearchMojibake())
+        {
+            // InputText keeps an internal edit buffer while active. Releasing and
+            // refocusing it makes the corrected UTF-8 user buffer authoritative.
+            ImGui.ClearActiveID();
+            ImGui.SetKeyboardFocusHere(-1);
+        }
         ImGui.SameLine(0.0f, -1.0f);
-        if (ImGui.Button("Refresh inventory", _zeroSize))
+        if (ImGui.Button(english ? "Refresh sigils" : "刷新因子", _zeroSize))
             RefreshInventory();
 
         BuildFilter(characterHash);
         ImGui.Separator();
-        ImGui.Text($"{_filteredIndices.Count} matching inventory sigils");
+        ImGui.Text(
+            english
+                ? $"Matching selectable sigils: {_filteredIndices.Count}"
+                : $"匹配的可选因子：{_filteredIndices.Count}"
+        );
         ImGui.BeginChildStr("SigilInventory##Reloaded", _childSize, true, 0);
         using (var clipper = new ImGuiListClipper())
         {
@@ -337,7 +254,7 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
         }
         ImGui.EndChild();
 
-        if (ImGui.Button("Clear this slot", _zeroSize))
+        if (ImGui.Button(english ? "Clear this slot" : "清空此槽", _zeroSize))
         {
             if (NativeCore.SetSelection(characterHash, _pickerSlot, 0))
             {
@@ -348,7 +265,7 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
             ImGui.CloseCurrentPopup();
         }
         ImGui.SameLine(0.0f, -1.0f);
-        if (ImGui.Button("Cancel", _zeroSize))
+        if (ImGui.Button(english ? "Cancel" : "取消", _zeroSize))
         {
             _pickerSlot = -1;
             ImGui.CloseCurrentPopup();
@@ -358,9 +275,42 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
             _pickerSlot = -1;
     }
 
+    private bool DrawLanguageSelector(bool english)
+    {
+        ImGui.Text(english ? "Current language: English" : "当前语言：中文");
+        ImGui.SameLine(0.0f, -1.0f);
+        ImGui.BeginDisabled(!english);
+        if (ImGui.SmallButton("中文##language_zh"))
+            english = ChangeLanguage(UiLocalization.Chinese);
+        ImGui.EndDisabled();
+        ImGui.SameLine(0.0f, -1.0f);
+        ImGui.BeginDisabled(english);
+        if (ImGui.SmallButton("English##language_en"))
+            english = ChangeLanguage(UiLocalization.English);
+        ImGui.EndDisabled();
+        return english;
+    }
+
+    private bool ChangeLanguage(int language)
+    {
+        if (NativeCore.SetLanguage(language))
+        {
+            _state.Language = language;
+            RefreshInventory();
+        }
+        return UiLocalization.IsEnglish(_state.Language);
+    }
+
+    private uint ResolveDisplayCharacterHash()
+    {
+        return _state.UiSelectedCharacterHash != 0
+            ? _state.UiSelectedCharacterHash
+            : _state.EffectiveCharacterHash;
+    }
+
     private void PollHotkey()
     {
-        int toggleKey = _state.ToggleKey is >= 1 and <= 255 ? _state.ToggleKey : 0x68;
+        int toggleKey = _state.ToggleKey is >= 1 and <= 255 ? _state.ToggleKey : 0x77;
         IntPtr gameWindow = ImguiHook.WindowHandle;
         IntPtr foregroundWindow = GetForegroundWindow();
         GetWindowThreadProcessId(foregroundWindow, out uint foregroundProcessId);
@@ -368,7 +318,7 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
             foregroundWindow != IntPtr.Zero &&
             foregroundProcessId == GetCurrentProcessId();
         bool toggleDown = focused && (GetAsyncKeyState(toggleKey) & 0x8000) != 0;
-        if (!_captureKey && toggleDown && !_toggleWasDown)
+        if (toggleDown && !_toggleWasDown)
         {
             SetWindowOpen(!_windowOpen);
             if (_windowOpen)
@@ -377,31 +327,6 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
                 _pickerSlot = -1;
         }
         _toggleWasDown = toggleDown;
-
-        if (!_captureKey || !focused)
-            return;
-        if (_captureWaitForRelease)
-        {
-            if (!AnyBindableKeyDown())
-                _captureWaitForRelease = false;
-            return;
-        }
-
-        for (int key = 0x08; key <= 0xFE; ++key)
-        {
-            if ((GetAsyncKeyState(key) & 0x8000) == 0)
-                continue;
-            if (key == 0x1B)
-            {
-                _captureKey = false;
-                return;
-            }
-            if (NativeCore.SetToggleKey(key))
-                _state.ToggleKey = key;
-            _captureKey = false;
-            _toggleWasDown = true;
-            return;
-        }
     }
 
     private void RefreshInventory()
@@ -427,7 +352,7 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
         if (_inventory.Count != _lastLoggedInventoryCount)
         {
             _lastLoggedInventoryCount = _inventory.Count;
-            _log($"Inventory snapshot refreshed: {_inventory.Count} selectable records scanned.");
+            _log($"Inventory snapshot refreshed: {_inventory.Count} valid physical records scanned.");
         }
     }
 
@@ -439,13 +364,15 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
             : NativeCore.GetSelection(characterHash);
     }
 
-    private string GetSelectedLabel(uint slotId)
+    private string GetSelectedLabel(uint slotId, bool english)
     {
         if (slotId == 0)
-            return "<empty>";
+            return english ? "<empty>" : "<空>";
         return _inventoryBySlot.TryGetValue(slotId, out var item)
             ? item.Label
-            : $"<missing inventory slot #{slotId}>";
+            : english
+                ? $"<missing inventory slot #{slotId}>"
+                : $"<缺失库存槽 #{slotId}>";
     }
 
     private void BuildFilter(uint characterHash)
@@ -474,6 +401,63 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
         return Encoding.UTF8.GetString(_searchBuffer, 0, length);
     }
 
+    private bool RepairChineseSearchMojibake()
+    {
+        string current = GetSearchText();
+        string repaired = RepairChineseMojibake(current);
+        if (string.Equals(current, repaired, StringComparison.Ordinal))
+            return false;
+
+        byte[] utf8 = Encoding.UTF8.GetBytes(repaired);
+        if (utf8.Length >= _searchBuffer.Length)
+            return false;
+        Array.Clear(_searchBuffer);
+        utf8.CopyTo(_searchBuffer, 0);
+        return true;
+    }
+
+    internal static string RepairChineseMojibake(string current)
+    {
+        if (current.Length < 2)
+            return current;
+
+        StringBuilder repaired = new(current.Length);
+        bool changed = false;
+        for (int index = 0; index < current.Length; ++index)
+        {
+            char first = current[index];
+            if (index + 1 < current.Length &&
+                first is >= '\u0081' and <= '\u00FE' &&
+                current[index + 1] <= '\u00FE')
+            {
+                char second = current[index + 1];
+                byte trail = (byte)second;
+                bool validGbkTrail = trail is >= 0x40 and <= 0xFE && trail != 0x7F;
+                ushort packed = (ushort)((first << 8) | second);
+                if (validGbkTrail &&
+                    Mod.TryDecodeAnsiCharacter(936, packed, out ushort decoded) &&
+                    IsChineseSearchCharacter(decoded))
+                {
+                    repaired.Append((char)decoded);
+                    ++index;
+                    changed = true;
+                    continue;
+                }
+            }
+            repaired.Append(first);
+        }
+
+        return changed ? repaired.ToString() : current;
+    }
+
+    private static bool IsChineseSearchCharacter(ushort character)
+    {
+        return character is >= 0x3400 and <= 0x9FFF or
+            >= 0xF900 and <= 0xFAFF or
+            >= 0x3000 and <= 0x303F or
+            >= 0xFF00 and <= 0xFFEF;
+    }
+
     private void SetWindowOpen(bool open)
     {
         bool changed = _windowOpen != open;
@@ -484,10 +468,7 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
         else if (changed)
             RestoreMouseCapture();
         if (!open)
-        {
             _pickerSlot = -1;
-            _captureKey = false;
-        }
     }
 
     private void BeginReleasedMouse()
@@ -515,30 +496,6 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
             SetForegroundWindow(gameWindow);
         _hasSavedClipRect = false;
         _savedCaptureWindow = IntPtr.Zero;
-    }
-
-    private static bool AnyBindableKeyDown()
-    {
-        for (int key = 0x08; key <= 0xFE; ++key)
-        {
-            if ((GetAsyncKeyState(key) & 0x8000) != 0)
-                return true;
-        }
-        return false;
-    }
-
-    private static string KeyName(int virtualKey)
-    {
-        uint scanCode = MapVirtualKeyW((uint)virtualKey, 0);
-        if (virtualKey is 0x25 or 0x26 or 0x27 or 0x28 or 0x21 or 0x22 or 0x23 or
-            0x24 or 0x2D or 0x2E or 0x6F or 0x90)
-        {
-            scanCode |= 0x100;
-        }
-        StringBuilder name = new(128);
-        return GetKeyNameTextW((int)(scanCode << 16), name, name.Capacity) > 0
-            ? name.ToString()
-            : $"VK 0x{virtualKey:X2}";
     }
 
     private static ImVec2 MakeVec2(float x, float y)
@@ -572,8 +529,7 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
         _pickerSize.Dispose();
         _childSize.Dispose();
         _successColor.Dispose();
-        _errorColor.Dispose();
-        _captureColor.Dispose();
+        _readOnlyColor.Dispose();
     }
 
     [DllImport("user32.dll")]
@@ -581,12 +537,6 @@ internal sealed unsafe class SigilOverlayUi : IDisposable
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
-
-    [DllImport("user32.dll")]
-    private static extern uint MapVirtualKeyW(uint code, uint mapType);
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetKeyNameTextW(int lParam, StringBuilder text, int size);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeRect
