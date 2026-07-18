@@ -65,7 +65,6 @@ internal sealed unsafe partial class SigilOverlayUi : IDisposable
         }
 
         PollHotkey();
-        _setInputCapture(_windowOpen);
         ImGui.GetIO().MouseDrawCursor = _windowOpen;
         if (!_windowOpen)
             return;
@@ -452,11 +451,14 @@ internal sealed unsafe partial class SigilOverlayUi : IDisposable
     private void SetWindowOpen(bool open)
     {
         bool changed = _windowOpen != open;
+        if (!changed)
+            return;
+
         _windowOpen = open;
         _setInputCapture(open);
-        if (changed && open)
+        if (open)
             BeginReleasedMouse();
-        else if (changed)
+        else
             RestoreMouseCapture();
         if (!open)
         {
@@ -473,13 +475,18 @@ internal sealed unsafe partial class SigilOverlayUi : IDisposable
     {
         _hasSavedClipRect = GetClipCursor(out _savedClipRect);
         _savedCaptureWindow = GetCapture();
-        MaintainReleasedMouse();
+        if (_savedCaptureWindow != IntPtr.Zero)
+            ReleaseCapture();
+        ClipCursor(IntPtr.Zero);
     }
 
     private static void MaintainReleasedMouse()
     {
-        ReleaseCapture();
-        ClipCursor(IntPtr.Zero);
+        // The native game-local ClipCursor gate keeps any new game request
+        // unclipped while input capture is active. Repeating ClipCursor(NULL)
+        // here only creates unnecessary compositor/cursor work every frame.
+        if (GetCapture() != IntPtr.Zero)
+            ReleaseCapture();
     }
 
     private void RestoreMouseCapture()

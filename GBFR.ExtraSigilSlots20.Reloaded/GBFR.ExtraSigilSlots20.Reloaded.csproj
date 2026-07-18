@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <None Include="ModConfig.json" CopyToOutputDirectory="Always" />
+    <None Include="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="Always" />
     <None Include="README-development.md" CopyToOutputDirectory="Always" />
     <None Include="README-safety-test.md" CopyToOutputDirectory="Always" />
     <None Include="..\GBFR.ExtraSigilSlots20.Native\bin\$(Configuration)\GBFR.ExtraSigilSlots20.Native.dll"

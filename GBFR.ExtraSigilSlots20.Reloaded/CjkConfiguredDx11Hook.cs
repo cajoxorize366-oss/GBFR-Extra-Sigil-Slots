@@ -10,7 +10,7 @@ namespace GBFR.ExtraSigilSlots20.Reloaded;
 
 internal sealed unsafe class CjkConfiguredDx11Hook : IImguiHook
 {
-    private readonly ImguiHookDx11 _inner = new();
+    private readonly SafeImguiHookDx11 _inner;
     private readonly string _modDirectory;
     private readonly Action<string> _log;
     private ushort[]? _glyphRanges;
@@ -22,13 +22,13 @@ internal sealed unsafe class CjkConfiguredDx11Hook : IImguiHook
     {
         _modDirectory = modDirectory;
         _log = log;
+        _inner = new SafeImguiHookDx11(log);
     }
 
     public bool IsApiSupported() => _inner.IsApiSupported();
 
     public void Initialize()
     {
-        ConfigureViewportPolicy();
         ConfigureCjkFont();
         _inner.Initialize();
     }
@@ -36,15 +36,6 @@ internal sealed unsafe class CjkConfiguredDx11Hook : IImguiHook
     public void Disable() => _inner.Disable();
 
     public void Enable() => _inner.Enable();
-
-    private void ConfigureViewportPolicy()
-    {
-        ImGuiIO io = ImguiHook.IO;
-        io.ConfigViewportsNoAutoMerge = true;
-        io.ConfigViewportsNoTaskBarIcon = true;
-        io.ConfigViewportsNoDecoration = true;
-        _log("ImGui multi-viewport policy enabled: NoAutoMerge, NoTaskBarIcon, NoDecoration.");
-    }
 
     private void ConfigureCjkFont()
     {

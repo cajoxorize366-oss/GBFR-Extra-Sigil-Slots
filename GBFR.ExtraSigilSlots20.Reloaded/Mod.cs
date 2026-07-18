@@ -158,8 +158,10 @@ public sealed partial class Mod : IMod
                     Render,
                     new ImguiHookOptions
                     {
-                        EnableViewports = true,
-                        IgnoreWindowUnactivate = true,
+                        // The selector lives inside the game window. Extra platform
+                        // windows add another DXGI/compositor path and can leave
+                        // transient black trails while the mouse is moving.
+                        EnableViewports = false,
                         CustomWndProcHandlerPointer = GetWndProcHandlerPointer(),
                         Implementations = new List<IImguiHook>
                         {
