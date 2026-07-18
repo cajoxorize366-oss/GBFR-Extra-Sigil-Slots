@@ -5,8 +5,10 @@ internal static class UiLocalization
     internal const int Chinese = 0;
     internal const int English = 1;
 
+    // These full-width/CJK punctuation glyphs sit outside the broad Han range
+    // loaded by CjkConfiguredDx11Hook, so keep every UI separator here.
     internal const string GlyphSeed =
-        "：（）当前语言中文英文当前角色未检测到当前角色未知角色刷新因子扫描出因子数量" +
+        "：（），。、｜当前语言中文英文当前角色未检测到当前角色未知角色刷新因子扫描出因子数量" +
         "当前状态可修改不可修改额外槽空缺失库存槽选择因子搜索因子名称或特性" +
         "匹配的因子清空此槽取消已装备已用于额外槽所有已使用本体扩展未被使用" +
         "预设套用覆盖保存另存为管理重命名删除新建名称保存失败成功冲突直接清空" +
