@@ -54,7 +54,9 @@ public sealed partial class Mod
     {
         try
         {
-            if (Volatile.Read(ref s_captureInput) != 0)
+            FrontendOverlayGate.ObserveWindowMessage(message, wParam, lParam);
+            bool captureInput = Volatile.Read(ref s_captureInput) != 0;
+            if (captureInput)
             {
                 if (message == 0x0051)
                     ClearTextInputState();
@@ -78,23 +80,22 @@ public sealed partial class Mod
                     Interlocked.Increment(ref s_capturedMouseKeyboardMessages);
                     return textResult;
                 }
-            }
-            ImGui.ImplWin32_WndProcHandler((void*)hWnd, message, wParam, lParam);
-            if (ImguiHook.Options?.IgnoreWindowUnactivate == true)
-            {
-                if (message == 0x0008)
+                ImGui.ImplWin32_WndProcHandler((void*)hWnd, message, wParam, lParam);
+                if (ImguiHook.Options?.IgnoreWindowUnactivate == true)
+                {
+                    if (message == 0x0008)
+                        return IntPtr.Zero;
+                    if ((message == 0x0006 || message == 0x001C) && wParam == IntPtr.Zero)
+                        return IntPtr.Zero;
+                }
+                if (ShouldCaptureMessage(message, lParam))
+                {
+                    if (message == 0x00FF)
+                        Interlocked.Increment(ref s_capturedRawInputMessages);
+                    else
+                        Interlocked.Increment(ref s_capturedMouseKeyboardMessages);
                     return IntPtr.Zero;
-                if ((message == 0x0006 || message == 0x001C) && wParam == IntPtr.Zero)
-                    return IntPtr.Zero;
-            }
-            if (Volatile.Read(ref s_captureInput) != 0 &&
-                ShouldCaptureMessage(message, lParam))
-            {
-                if (message == 0x00FF)
-                    Interlocked.Increment(ref s_capturedRawInputMessages);
-                else
-                    Interlocked.Increment(ref s_capturedMouseKeyboardMessages);
-                return IntPtr.Zero;
+                }
             }
         }
         catch

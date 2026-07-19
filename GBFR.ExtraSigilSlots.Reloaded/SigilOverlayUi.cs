@@ -33,7 +33,6 @@ internal sealed unsafe partial class SigilOverlayUi : IDisposable
     private uint[] _selection = new uint[NativeCore.VirtualSlotCapacity];
     private uint _selectionCharacterHash;
     private bool _windowOpen;
-    private bool _toggleWasDown;
     private int _pickerSlot = -1;
     private bool _pickerOpen = true;
     private int _lastLoggedInventoryCount = -1;
@@ -57,17 +56,26 @@ internal sealed unsafe partial class SigilOverlayUi : IDisposable
         if (_disposed)
             return;
 
-        NativeCore.Tick();
+        bool openedThisFrame = false;
+        if (FrontendOverlayGate.ConsumeToggleRequest())
+        {
+            SetWindowOpen(!_windowOpen);
+            openedThisFrame = _windowOpen;
+        }
+
+        ImGui.GetIO().MouseDrawCursor = _windowOpen;
+        if (!_windowOpen)
+            return;
+
         if (!NativeCore.TryGetState(out _state))
         {
             SetWindowOpen(false);
             return;
         }
+        FrontendOverlayGate.SetToggleKey(_state.ToggleKey);
+        if (openedThisFrame)
+            RefreshInventory();
 
-        PollHotkey();
-        ImGui.GetIO().MouseDrawCursor = _windowOpen;
-        if (!_windowOpen)
-            return;
         MaintainReleasedMouse();
 
         if (_inventory.Count == 0 || NativeCore.IsInventoryDirty())
@@ -147,6 +155,7 @@ internal sealed unsafe partial class SigilOverlayUi : IDisposable
 
     internal void Close()
     {
+        FrontendOverlayGate.ForceClosed();
         SetWindowOpen(false);
         _pickerSlot = -1;
     }
@@ -279,27 +288,6 @@ internal sealed unsafe partial class SigilOverlayUi : IDisposable
         return _state.UiSelectedCharacterHash != 0
             ? _state.UiSelectedCharacterHash
             : _state.EffectiveCharacterHash;
-    }
-
-    private void PollHotkey()
-    {
-        int toggleKey = _state.ToggleKey is >= 1 and <= 255 ? _state.ToggleKey : 0x77;
-        IntPtr gameWindow = ImguiHook.WindowHandle;
-        IntPtr foregroundWindow = GetForegroundWindow();
-        GetWindowThreadProcessId(foregroundWindow, out uint foregroundProcessId);
-        bool focused = gameWindow != IntPtr.Zero &&
-            foregroundWindow != IntPtr.Zero &&
-            foregroundProcessId == GetCurrentProcessId();
-        bool toggleDown = focused && (GetAsyncKeyState(toggleKey) & 0x8000) != 0;
-        if (toggleDown && !_toggleWasDown)
-        {
-            SetWindowOpen(!_windowOpen);
-            if (_windowOpen)
-                RefreshInventory();
-            else
-                _pickerSlot = -1;
-        }
-        _toggleWasDown = toggleDown;
     }
 
     private void RefreshInventory()
@@ -450,6 +438,7 @@ internal sealed unsafe partial class SigilOverlayUi : IDisposable
 
     private void SetWindowOpen(bool open)
     {
+        FrontendOverlayGate.SetOpen(open);
         bool changed = _windowOpen != open;
         if (!changed)
             return;
@@ -538,12 +527,6 @@ internal sealed unsafe partial class SigilOverlayUi : IDisposable
         DisposePresetUiResources();
     }
 
-    [DllImport("user32.dll")]
-    private static extern short GetAsyncKeyState(int virtualKey);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
-
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeRect
     {
@@ -578,12 +561,6 @@ internal sealed unsafe partial class SigilOverlayUi : IDisposable
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindow(IntPtr window);
-
-    [DllImport("user32.dll")]
-    private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
-
-    [DllImport("kernel32.dll")]
-    private static extern uint GetCurrentProcessId();
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

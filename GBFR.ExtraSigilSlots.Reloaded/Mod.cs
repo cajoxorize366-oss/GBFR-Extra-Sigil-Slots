@@ -147,6 +147,10 @@ public sealed partial class Mod : IMod
                     : $"Native core loaded without hooks: {NativeCore.GetRuntimeMessage()}"
             );
 
+            FrontendOverlayGate.ForceClosed();
+            if (NativeCore.TryGetState(out NativeCore.RuntimeState initialState))
+                FrontendOverlayGate.SetToggleKey(initialState.ToggleKey);
+
             SDK.Init(hooks, message =>
             {
                 if (!message.Contains(
@@ -167,7 +171,11 @@ public sealed partial class Mod : IMod
                         CustomWndProcHandlerPointer = GetWndProcHandlerPointer(),
                         Implementations = new List<IImguiHook>
                         {
-                            new CjkConfiguredDx11Hook(modDirectory, Log),
+                            new CjkConfiguredDx11Hook(
+                                modDirectory,
+                                NativeCore.Tick,
+                                static () => FrontendOverlayGate.ShouldRenderFrame,
+                                Log),
                         },
                     }
                 )

@@ -21,3 +21,4 @@ The harnesses cover:
 - strict `VirtualSlotCount` normalization and hidden-slot cleanup;
 - packed ABI v9 sizes and transactional preset-reference updates;
 - keyboard/mouse versus HID/controller Raw Input classification.
+- event-driven frontend wake-up, key-repeat suppression, and closed-frame sleeping.

@@ -18,11 +18,15 @@ internal sealed unsafe class CjkConfiguredDx11Hook : IImguiHook
     private ImFont? _font;
     private bool _disposed;
 
-    internal CjkConfiguredDx11Hook(string modDirectory, Action<string> log)
+    internal CjkConfiguredDx11Hook(
+        string modDirectory,
+        Action presentTick,
+        Func<bool> shouldRenderFrontend,
+        Action<string> log)
     {
         _modDirectory = modDirectory;
         _log = log;
-        _inner = new SafeImguiHookDx11(log);
+        _inner = new SafeImguiHookDx11(presentTick, shouldRenderFrontend, log);
     }
 
     public bool IsApiSupported() => _inner.IsApiSupported();

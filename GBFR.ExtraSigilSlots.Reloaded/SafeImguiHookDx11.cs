@@ -59,6 +59,8 @@ internal sealed unsafe class SafeImguiHookDx11 : IImguiHook
     [ThreadStatic]
     private static bool s_presentRecursionLock;
 
+    private readonly Action _presentTick;
+    private readonly Func<bool> _shouldRenderFrontend;
     private readonly Action<string> _log;
     private readonly object _hookStateLock = new();
     private readonly ReaderWriterLockSlim _presentLifetimeLock =
@@ -71,8 +73,13 @@ internal sealed unsafe class SafeImguiHookDx11 : IImguiHook
     private int _presentStopping;
     private bool _disposed;
 
-    internal SafeImguiHookDx11(Action<string> log)
+    internal SafeImguiHookDx11(
+        Action presentTick,
+        Func<bool> shouldRenderFrontend,
+        Action<string> log)
     {
+        _presentTick = presentTick;
+        _shouldRenderFrontend = shouldRenderFrontend;
         _log = log;
     }
 
@@ -145,6 +152,16 @@ internal sealed unsafe class SafeImguiHookDx11 : IImguiHook
                     if (!ImguiHook.CheckWindowHandle(windowHandle))
                         return InvokeOriginalPresent(swapChainPointer, syncInterval, flags);
 
+                    // Keep the game/native hook work on its established game-
+                    // window Present cadence. Only the frontend below sleeps.
+                    _presentTick();
+
+                    // Initialize the Win32/DX11 backend once so WndProc can wake
+                    // the overlay. After that, a closed frontend exits before
+                    // device acquisition and every ImGui frame/render call.
+                    if (_initialized && !_shouldRenderFrontend())
+                        return InvokeOriginalPresent(swapChainPointer, syncInterval, flags);
+
                     using var device = swapChain.GetDevice<Device>();
                     if (!_initialized)
                     {
@@ -154,6 +171,9 @@ internal sealed unsafe class SafeImguiHookDx11 : IImguiHook
                             (void*)device.ImmediateContext.NativePointer);
                         _initialized = true;
                     }
+
+                    if (!_shouldRenderFrontend())
+                        return InvokeOriginalPresent(swapChainPointer, syncInterval, flags);
 
                     ImGui.ImGuiImplDX11NewFrame();
                     ImguiHook.NewFrame();
