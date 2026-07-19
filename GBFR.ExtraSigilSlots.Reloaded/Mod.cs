@@ -148,8 +148,11 @@ public sealed partial class Mod : IMod
             );
 
             FrontendOverlayGate.ForceClosed();
+            int initialToggleKey = (int)OverlayHotkey.F8;
             if (NativeCore.TryGetState(out NativeCore.RuntimeState initialState))
-                FrontendOverlayGate.SetToggleKey(initialState.ToggleKey);
+                initialToggleKey = initialState.ToggleKey;
+            FrontendOverlayGate.SetToggleKey(initialToggleKey);
+            InitializeHotkeyConfiguration(loader, modId, initialToggleKey);
 
             SDK.Init(hooks, message =>
             {
@@ -209,7 +212,7 @@ public sealed partial class Mod : IMod
                 return;
 
             Log("Direct3D11 Reloaded ImGui frontend initialized; ReShade and Luma are not used by this mod.");
-            Log("Press F8 to open the extra-sigil selector.");
+            Log($"Press {GetConfiguredHotkeyName()} to open the extra-sigil selector.");
         }
         catch (Exception exception)
         {
@@ -234,6 +237,7 @@ public sealed partial class Mod : IMod
                     // Preserve the original initialization failure in the log.
                 }
             }
+            DetachHotkeyConfiguration()?.DisposeEvents();
             Log($"Initialization failed: {exception}");
         }
     }
@@ -290,6 +294,7 @@ public sealed partial class Mod : IMod
     private void Dispose()
     {
         SigilOverlayUi? ui;
+        HotkeyConfig? hotkeyConfiguration;
         bool destroyImgui;
         bool shutdownCore;
         lock (_imguiOperationLock)
@@ -304,6 +309,8 @@ public sealed partial class Mod : IMod
                 _ui = null;
                 destroyImgui = _imguiCreated;
                 shutdownCore = _nativeCoreActive;
+                hotkeyConfiguration = _hotkeyConfiguration;
+                _hotkeyConfiguration = null;
                 _imguiCreated = false;
                 _nativeCoreActive = false;
                 _started = false;
@@ -314,6 +321,7 @@ public sealed partial class Mod : IMod
             if (destroyImgui)
                 ImguiHook.Disable();
         }
+        hotkeyConfiguration?.DisposeEvents();
 
         bool renderDrained = SpinWait.SpinUntil(
             () => Volatile.Read(ref _activeRenderCallbacks) == 0,

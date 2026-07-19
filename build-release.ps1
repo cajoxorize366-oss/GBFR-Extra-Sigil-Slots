@@ -5,7 +5,7 @@ param(
     [ValidateSet('x64')]
     [string]$Platform = 'x64',
     [ValidatePattern('^[0-9A-Za-z][0-9A-Za-z._-]*$')]
-    [string]$Version = '0.6.0'
+    [string]$Version = '0.7.0'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -75,8 +75,17 @@ if (-not $resolvedDist.StartsWith($resolvedRoot, [StringComparison]::OrdinalIgno
     throw "Refusing to clean a dist path outside the repository: $distRoot"
 }
 
-if (Test-Path -LiteralPath $distRoot) {
-    Remove-Item -LiteralPath $distRoot -Recurse -Force
+$resolvedPackage = [IO.Path]::GetFullPath($packageDir).TrimEnd('\') + '\'
+if (-not $resolvedPackage.StartsWith($resolvedDist, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing to clean a package path outside dist: $packageDir"
+}
+
+New-Item -ItemType Directory -Path $distRoot -Force | Out-Null
+if (Test-Path -LiteralPath $packageDir) {
+    Remove-Item -LiteralPath $packageDir -Recurse -Force
+}
+if (Test-Path -LiteralPath $zipPath) {
+    Remove-Item -LiteralPath $zipPath -Force
 }
 New-Item -ItemType Directory -Path $packageDir | Out-Null
 Copy-Item -Path (Join-Path $managedOutput '*') -Destination $packageDir -Recurse -Force

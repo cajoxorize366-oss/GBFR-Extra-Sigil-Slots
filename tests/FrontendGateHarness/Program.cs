@@ -48,6 +48,19 @@ Assert((int)(currentKey.GetValue(null) ?? 0) == 0x77, "Invalid keys must fall ba
 Assert(!(bool)(observe.Invoke(null, [0x0101u, new IntPtr(0x77), IntPtr.Zero]) ?? true),
     "Key-up must not queue a toggle.");
 
+forceClosed.Invoke(null, null);
+setToggleKey.Invoke(null, [0x75]);
+Assert((int)(currentKey.GetValue(null) ?? 0) == 0x75,
+    "A Reloaded-II hotkey change must update the frontend gate.");
+Assert(!(bool)(observe.Invoke(null, [0x0100u, new IntPtr(0x77), IntPtr.Zero]) ?? true),
+    "F8 must stop toggling after the hotkey changes to F6.");
+Assert((bool)(observe.Invoke(null, [0x0100u, new IntPtr(0x75), IntPtr.Zero]) ?? false),
+    "The configured F6 key must queue a toggle.");
+Assert((bool)(consume.Invoke(null, null) ?? false),
+    "The configured-key toggle must be consumed.");
+forceClosed.Invoke(null, null);
+setToggleKey.Invoke(null, [0x77]);
+
 observe.Invoke(null, [0x0100u, new IntPtr(0x77), IntPtr.Zero]);
 observe.Invoke(null, [0x0100u, new IntPtr(0x77), IntPtr.Zero]);
 Assert(!(bool)(consume.Invoke(null, null) ?? true),

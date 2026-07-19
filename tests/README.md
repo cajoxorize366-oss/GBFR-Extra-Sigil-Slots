@@ -22,3 +22,4 @@ The harnesses cover:
 - packed ABI v9 sizes and transactional preset-reference updates;
 - keyboard/mouse versus HID/controller Raw Input classification.
 - event-driven frontend wake-up, key-repeat suppression, and closed-frame sleeping.
+- Reloaded-II hotkey defaults, persistence, live updates, and invalid-value normalization.

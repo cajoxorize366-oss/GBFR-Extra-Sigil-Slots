@@ -44,5 +44,8 @@ Invoke-Harness `
 Invoke-Harness `
     -Project (Join-Path $PSScriptRoot 'FrontendGateHarness\FrontendGateHarness.csproj') `
     -OutputDirectory $managedOutput
+Invoke-Harness `
+    -Project (Join-Path $PSScriptRoot 'HotkeyConfigHarness\HotkeyConfigHarness.csproj') `
+    -OutputDirectory $managedOutput
 
 Write-Output 'ALL_SMOKE_TESTS=PASS'
