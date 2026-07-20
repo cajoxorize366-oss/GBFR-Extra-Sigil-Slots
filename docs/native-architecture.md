@@ -61,8 +61,10 @@ stores and coordinators, but stores must not install or disable hooks.
    at most one virtual owner, and native body-slot ownership always wins.
 7. Native body slots remain 1-12. Configurable virtual slots remain 1-24 with a
    default of 8; shrinking the configured count clears hidden reservations.
-8. Input capture suppresses keyboard and mouse only. XInput, DirectInput gamepad
-   input, Raw HID, and unknown future raw-input device types pass through.
+8. Input capture suppresses keyboard and mouse only. DirectInput devices are
+   classified when `CreateDevice` receives `GUID_SysKeyboard` or
+   `GUID_SysMouse`; XInput, DirectInput gamepad input, Raw HID, and unknown
+   future raw-input device types pass through.
 9. C ABI functions remain failure-safe for null pointers, short buffers,
    shutdown races, and unsupported executable versions.
 10. Dynamic unloading is unsupported (`Mod.CanUnload` is false). Managed
@@ -100,7 +102,7 @@ temporary `.inl` fragments or unity-build includes are used.
 | --- | --- | --- |
 | `runtime_state.cpp` / `runtime.cpp` | initialization state, shutdown state, module paths, messages, tick coordination | detour bodies |
 | `safe_game_access.cpp` | guarded reads, pointer/range validation, status identity and authorization validation | UI rendering |
-| `input_capture.cpp` | IAT patches, input detours, capture barrier, cursor freeze state | overlay policy |
+| `input_capture.cpp` | USER32/DInput8 IAT patches, event-driven DirectInput device classification, input detours, capture barrier, cursor freeze state | overlay policy |
 | `config_store.cpp` | INI normalization, settings and persisted character selections | game-memory reads |
 | `name_tables.cpp` | localized name tables and immutable compatibility mapping | inventory mutation |
 | `selection_store.cpp` | per-character selections, reverse ownership and apply-generation transactions | hook installation |

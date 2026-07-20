@@ -35,6 +35,39 @@ foreach ((uint type, bool expected, string name) in cases)
 
 Console.WriteLine("RAW_INPUT_CLASSIFICATION=PASS");
 
+Type windowClassifierType = assembly.GetType(
+    "GBFR.ExtraSigilSlots.Reloaded.WindowInputClassifier",
+    throwOnError: true
+)!;
+MethodInfo windowClassifier = windowClassifierType.GetMethod(
+    "IsAlwaysCaptured",
+    BindingFlags.NonPublic | BindingFlags.Static
+) ?? throw new MissingMethodException(windowClassifierType.FullName, "IsAlwaysCaptured");
+
+(uint Message, bool Capture, string Name)[] windowCases =
+[
+    (0x0100, true, "WM_KEYDOWN"),
+    (0x0109, true, "WM_UNICHAR"),
+    (0x010F, true, "WM_IME_COMPOSITION"),
+    (0x0200, true, "WM_MOUSEMOVE"),
+    (0x0240, true, "WM_TOUCH"),
+    (0x0286, true, "WM_IME_CHAR"),
+    (0x0312, true, "WM_HOTKEY"),
+    (0x00FF, false, "WM_INPUT requires device classification"),
+    (0x000F, false, "WM_PAINT"),
+];
+foreach ((uint message, bool expected, string name) in windowCases)
+{
+    bool actual = (bool)(windowClassifier.Invoke(null, [message]) ?? false);
+    if (actual != expected)
+        throw new InvalidOperationException(
+            $"Window message 0x{message:X4} ({name}): expected capture={expected}, got {actual}."
+        );
+    Console.WriteLine($"WINDOW_MESSAGE=0x{message:X4} NAME={name} CAPTURE={actual}");
+}
+
+Console.WriteLine("WINDOW_INPUT_CLASSIFICATION=PASS");
+
 sealed class PluginLoadContext(string pluginPath) : AssemblyLoadContext
 {
     private readonly AssemblyDependencyResolver _resolver = new(pluginPath);

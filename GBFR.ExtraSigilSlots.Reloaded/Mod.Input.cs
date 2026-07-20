@@ -100,8 +100,15 @@ public sealed partial class Mod
         }
         catch
         {
-            // Input classification is fail-open: preserve the game's own
-            // WndProc path if ImGui or Raw Input inspection fails.
+            // Keep keyboard and mouse closed to the game even if ImGui throws.
+            // WM_INPUT remains fail-open here because its device type cannot be
+            // classified safely after a Raw Input inspection failure.
+            if (Volatile.Read(ref s_captureInput) != 0 &&
+                WindowInputClassifier.IsAlwaysCaptured(message))
+            {
+                Interlocked.Increment(ref s_capturedMouseKeyboardMessages);
+                return IntPtr.Zero;
+            }
         }
 
         try
@@ -414,28 +421,8 @@ public sealed partial class Mod
     private static bool ShouldCaptureMessage(uint message, IntPtr lParam)
     {
         const uint WmInput = 0x00FF;
-        const uint WmNcMouseFirst = 0x00A0;
-        const uint WmNcMouseLast = 0x00AD;
-        const uint WmGestureFirst = 0x0119;
-        const uint WmGestureLast = 0x011A;
-        const uint WmKeyFirst = 0x0100;
-        const uint WmKeyLast = 0x0109;
-        const uint WmMouseFirst = 0x0200;
-        const uint WmMouseLast = 0x020E;
-        const uint WmTouch = 0x0240;
-        const uint WmPointerFirst = 0x0241;
-        const uint WmPointerLast = 0x024F;
-        const uint WmHotkey = 0x0312;
-        const uint WmAppCommand = 0x0319;
         return (message == WmInput && ShouldCaptureRawInput(lParam)) ||
-            message is >= WmNcMouseFirst and <= WmNcMouseLast ||
-            message is >= WmGestureFirst and <= WmGestureLast ||
-            message is >= WmKeyFirst and <= WmKeyLast ||
-            message is >= WmMouseFirst and <= WmMouseLast ||
-            message == WmTouch ||
-            message is >= WmPointerFirst and <= WmPointerLast ||
-            message == WmHotkey ||
-            message == WmAppCommand;
+            WindowInputClassifier.IsAlwaysCaptured(message);
     }
 
     private static bool ShouldCaptureRawInput(IntPtr rawInputHandle)

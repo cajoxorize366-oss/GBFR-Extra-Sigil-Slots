@@ -44,8 +44,6 @@ inline constexpr uintptr_t kSystemDataGlobalRva = 0x07C20940;
 inline constexpr uintptr_t kStatusManagerGlobalRva = 0x07C24980;
 inline constexpr uintptr_t kUiManagerGlobalRva = 0x07C4A140;
 inline constexpr uintptr_t kUiStateSourceGlobalRva = 0x07C4A1A8;
-inline constexpr uintptr_t kInputContextGlobalRva = 0x07032D30;
-
 inline constexpr int kNativeInternalSlotCount = 13;
 inline constexpr int kDefaultVirtualSlotCount = 8;
 inline constexpr int kVirtualSlotCapacity = 24;
@@ -256,8 +254,11 @@ extern SafetyHookMid g_trait_fetch_hook;
 extern SafetyHookMid g_status_owner_tick_hook;
 extern SafetyHookMid g_local_context1_bind_call_hook;
 extern SafetyHookMid g_local_context1_bind_return_hook;
+extern SafetyHookInline g_direct_input_create_device_hook;
 extern SafetyHookInline g_direct_input_get_state_hook;
 extern SafetyHookInline g_direct_input_get_data_hook;
+extern SafetyHookInline g_direct_input_get_state_hook_secondary;
+extern SafetyHookInline g_direct_input_get_data_hook_secondary;
 
 extern std::shared_mutex g_selection_mutex;
 extern std::unordered_map<uint32_t, std::array<uint32_t, kVirtualSlotCapacity>> g_character_selections;
@@ -340,19 +341,29 @@ extern std::atomic_uint32_t g_input_neutral_frames;
 extern std::atomic_bool g_input_iat_hooks_ready;
 extern std::atomic_bool g_direct_input_hook_ready;
 extern std::atomic_uintptr_t g_direct_input_mouse_device;
+extern std::atomic_uintptr_t g_direct_input_keyboard_device;
 extern std::mutex g_input_hook_mutex;
 extern std::vector<IatPatch> g_iat_patches;
 extern POINT g_frozen_cursor_position;
 using GetAsyncKeyStateFn = SHORT(WINAPI*)(int);
 using GetKeyStateFn = SHORT(WINAPI*)(int);
+using GetKeyboardStateFn = BOOL(WINAPI*)(PBYTE);
 using GetCursorPosFn = BOOL(WINAPI*)(LPPOINT);
 using SetCursorPosFn = BOOL(WINAPI*)(int, int);
 using ClipCursorFn = BOOL(WINAPI*)(const RECT*);
+using DirectInput8CreateFn = HRESULT(WINAPI*)(
+   HINSTANCE,
+   DWORD,
+   REFIID,
+   LPVOID*,
+   void*);
 extern GetAsyncKeyStateFn g_original_get_async_key_state;
 extern GetKeyStateFn g_original_get_key_state;
+extern GetKeyboardStateFn g_original_get_keyboard_state;
 extern GetCursorPosFn g_original_get_cursor_pos;
 extern SetCursorPosFn g_original_set_cursor_pos;
 extern ClipCursorFn g_original_clip_cursor;
+extern DirectInput8CreateFn g_original_direct_input8_create;
 
 extern UiSettings g_settings;
 extern std::mutex g_settings_mutex;
@@ -404,8 +415,8 @@ bool ReadByte(uintptr_t address, uint8_t& value) noexcept;
 bool WriteByte(uintptr_t address, uint8_t value);
 
 void RestoreInputIatHooks();
+void ResetDirectInputDeviceHookTargets() noexcept;
 bool InstallInputIatHooks();
-void TryInstallDirectInputHooks();
 void UpdateInputCaptureBarrier();
 
 std::string ComputeFileSha256(const std::filesystem::path& path);

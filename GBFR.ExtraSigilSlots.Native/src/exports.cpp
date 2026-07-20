@@ -22,7 +22,6 @@ void GBFR20_CALL GBFR20_Tick()
    g_overlay_thread_id.store(GetCurrentThreadId(), std::memory_order_release);
    g_overlay_frame_count.fetch_add(1, std::memory_order_acq_rel);
    EnsureInitialized();
-   TryInstallDirectInputHooks();
    UpdateInputCaptureBarrier();
    UpdateEditSessionState();
    ValidateAuthorizedStatuses();

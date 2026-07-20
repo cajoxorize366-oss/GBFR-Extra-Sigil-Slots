@@ -533,10 +533,16 @@ void ShutdownHooks()
    g_tls_local_context1_binding = {};
 
    RestoreInputIatHooks();
+   if (g_direct_input_get_data_hook_secondary)
+      (void)g_direct_input_get_data_hook_secondary.disable();
+   if (g_direct_input_get_state_hook_secondary)
+      (void)g_direct_input_get_state_hook_secondary.disable();
    if (g_direct_input_get_data_hook)
       (void)g_direct_input_get_data_hook.disable();
    if (g_direct_input_get_state_hook)
       (void)g_direct_input_get_state_hook.disable();
+   if (g_direct_input_create_device_hook)
+      (void)g_direct_input_create_device_hook.disable();
 
    if (g_local_context1_bind_return_hook)
       (void)g_local_context1_bind_return_hook.disable();
@@ -570,9 +576,14 @@ void ShutdownHooks()
    g_local_context1_bind_call_hook.reset();
    g_trait_fetch_hook.reset();
    g_get_gem_hook.reset();
+   g_direct_input_get_data_hook_secondary.reset();
+   g_direct_input_get_state_hook_secondary.reset();
    g_direct_input_get_data_hook.reset();
    g_direct_input_get_state_hook.reset();
+   g_direct_input_create_device_hook.reset();
+   ResetDirectInputDeviceHookTargets();
    g_direct_input_mouse_device.store(0, std::memory_order_release);
+   g_direct_input_keyboard_device.store(0, std::memory_order_release);
    g_direct_input_hook_ready.store(false, std::memory_order_release);
    {
       std::unique_lock lock(g_authorization_mutex);
