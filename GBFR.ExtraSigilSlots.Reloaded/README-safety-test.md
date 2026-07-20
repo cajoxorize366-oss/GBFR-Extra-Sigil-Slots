@@ -27,3 +27,9 @@ DX11 Present-only backend enabled with a native original-Present boundary
 ```
 
 如果原始 Present 链触发 `0xC0000005`，原生边界会拦截异常并在图形回调线程之外停用覆盖层 Hook，避免由托管回调直接导致 Fatal error。
+
+## 游戏 EXE 兼容性门禁
+
+SHA-256 用于标识已经测试过的游戏 EXE，但不再单独决定是否安装游戏 Hook。未收录的 SHA-256 必须通过全部必需的 RVA／字节预检，所有预检完成前不会写入补丁或安装游戏 Hook；任意一项不匹配都会拒绝整次安装，并在日志中报告实际 SHA-256、失败阶段与 RVA。
+
+这允许代码布局完全相同、但整体文件哈希不同的 ER 2.0.2 EXE 使用扩展因子槽，同时仍会拒绝真正发生代码布局变化的版本。

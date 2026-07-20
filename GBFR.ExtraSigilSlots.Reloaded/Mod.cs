@@ -141,10 +141,12 @@ public sealed partial class Mod : IMod
                 return;
             }
 
+            string nativeInitializationMessage = NativeCore.GetRuntimeMessage();
             Log(
                 hooksReady
-                    ? "ReShade-free native core initialized and hooks passed preflight."
-                    : $"Native core loaded without hooks: {NativeCore.GetRuntimeMessage()}"
+                    ? "ReShade-free native core initialized and hooks passed preflight. " +
+                        nativeInitializationMessage
+                    : $"Native core loaded without hooks: {nativeInitializationMessage}"
             );
 
             FrontendOverlayGate.ForceClosed();

@@ -57,17 +57,25 @@ void Initialize()
    }
 
    const std::string executable_hash = ComputeFileSha256(executable);
-   if (executable_hash != kExpectedExeSha256)
+   const std::string executable_hash_label = executable_hash.empty()
+      ? std::string("<read failed>")
+      : executable_hash;
+   const bool known_executable_hash = executable_hash == kExpectedExeSha256;
+   if (!known_executable_hash)
    {
-      SetRuntimeMessage(
-         "Unsupported game executable SHA-256: " +
-            (executable_hash.empty() ? std::string("<read failed>") : executable_hash),
-         true);
-      g_initialized.store(true, std::memory_order_release);
-      return;
+      Log(
+         "Executable SHA-256 " + executable_hash_label +
+         " is not in the known list; full byte/RVA preflight will decide whether hooks may be installed.");
    }
 
-   InstallHooks();
+   const bool hooks_installed = InstallHooks(executable_hash_label);
+   if (hooks_installed && !known_executable_hash)
+   {
+      SetRuntimeMessage(
+         "Executable SHA-256 " + executable_hash_label +
+            " is not in the known list; every required byte/RVA preflight passed, so hooks were enabled for this run.",
+         false);
+   }
    g_initialized.store(true, std::memory_order_release);
 }
 

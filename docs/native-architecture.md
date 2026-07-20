@@ -43,8 +43,11 @@ stores and coordinators, but stores must not install or disable hooks.
 
 ## Non-negotiable invariants
 
-1. Only the verified Granblue Fantasy: Relink ER 2.0.2 executable may install
-   hooks. The executable hash, RVAs, and byte preflights form one version gate.
+1. Only a verified Granblue Fantasy: Relink ER 2.0.2 code layout may install
+   game hooks. The executable name remains mandatory. A known executable hash
+   identifies the tested build, while an unknown hash is diagnostic only and
+   must pass every required RVA/byte preflight before any hook or byte patch is
+   installed. A failed preflight rejects the entire transaction.
 2. Every game-memory read remains guarded. SEH-safe reads, pointer/range checks,
    and executable-address checks are safety boundaries, not optional cleanup.
 3. Hook installation and shutdown remain transactional. A partial install must

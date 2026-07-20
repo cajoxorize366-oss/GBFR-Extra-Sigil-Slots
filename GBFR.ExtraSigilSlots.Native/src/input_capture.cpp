@@ -272,7 +272,8 @@ bool InstallInputIatHooks()
 
 void TryInstallDirectInputHooks()
 {
-   if (g_direct_input_hook_ready.load(std::memory_order_acquire) || g_image_base == 0)
+   if (!g_hooks_ready.load(std::memory_order_acquire) ||
+       g_direct_input_hook_ready.load(std::memory_order_acquire) || g_image_base == 0)
       return;
    std::scoped_lock lock(g_input_hook_mutex);
    if (g_direct_input_hook_ready.load(std::memory_order_acquire))

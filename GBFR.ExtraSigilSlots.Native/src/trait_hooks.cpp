@@ -1,6 +1,7 @@
 #include "../native_internal.h"
 
 #include <intrin.h>
+#include <sstream>
 
 namespace gbfr::native
 {
@@ -60,6 +61,25 @@ uint32_t CountSelectedSlots(
       selection.begin(),
       selection.begin() + GetVirtualSlotCount(),
       [](uint32_t slot_id) { return slot_id != 0; }));
+}
+
+template <size_t Size>
+bool RequireCodePreflight(
+   std::string_view executable_hash,
+   std::string_view stage,
+   uintptr_t rva,
+   const std::array<uint8_t, Size>& expected)
+{
+   if (MatchesBytes(g_image_base + rva, expected))
+      return true;
+
+   std::ostringstream message;
+   message << "Native code preflight failed for executable SHA-256 "
+           << executable_hash << ": stage=" << stage << ", RVA=0x"
+           << ToUpperHex(static_cast<uint32_t>(rva)) << ", expected " << Size
+           << " bytes; no hook or byte patch was installed.";
+   SetRuntimeMessage(message.str(), true);
+   return false;
 }
 
 void BeginNaturalContributionTracking(
@@ -564,29 +584,64 @@ void ShutdownHooks()
    }
 }
 
-bool InstallHooks()
+bool InstallHooks(std::string_view executable_hash)
 {
-   if (!MatchesBytes(
-          g_image_base + kTraitApplyLoopLimitImmediateRva - 4, kTraitApplyLoopPreflight) ||
-       !MatchesBytes(
-          g_image_base + kTraitCategoryLoopLimitImmediateRva - 6,
-          kTraitCategoryLoopPreflight))
-   {
-      SetRuntimeMessage(
-         "Trait-loop preflight failed. Disable the old Reloaded-II extra-slot prototype and verify ER 2.0.2.",
-         true);
-      return false;
-   }
-   if (!MatchesBytes(g_image_base + kTraitFetchPathRva, kTraitFetchPreflight) ||
-       !MatchesBytes(g_image_base + kGetGemDataByIndexRva, kGetterPreflight) ||
-       !MatchesBytes(g_image_base + kStatusRebuildRva, kStatusRebuildPreflight) ||
-       !MatchesBytes(g_image_base + kStatusNotifierRva, kStatusNotifierPreflight) ||
-       !MatchesBytes(g_image_base + kStatusOwnerTickRva, kStatusOwnerTickPreflight) ||
-       !MatchesBytes(
-          g_image_base + kStatusOwnerCharacterLoopRva,
+   if (!RequireCodePreflight(
+          executable_hash,
+          "trait-apply-loop-limit",
+          kTraitApplyLoopLimitImmediateRva - 4,
+          kTraitApplyLoopPreflight) ||
+       !RequireCodePreflight(
+          executable_hash,
+          "trait-apply-getter-return",
+          kTraitApplyGetterReturnRva,
+          kTraitApplyGetterReturnPreflight) ||
+       !RequireCodePreflight(
+          executable_hash,
+          "trait-category-loop-limit",
+          kTraitCategoryLoopLimitImmediateRva - 6,
+          kTraitCategoryLoopPreflight) ||
+       !RequireCodePreflight(
+          executable_hash,
+          "trait-fetch-path",
+          kTraitFetchPathRva,
+          kTraitFetchPreflight) ||
+       !RequireCodePreflight(
+          executable_hash,
+          "trait-fetch-call-path",
+          kTraitFetchCallPathRva,
+          kTraitFetchCallPathPreflight) ||
+       !RequireCodePreflight(
+          executable_hash,
+          "trait-category-getter-return",
+          kTraitCategoryGetterReturnRva,
+          kTraitCategoryGetterReturnPreflight) ||
+       !RequireCodePreflight(
+          executable_hash,
+          "gem-data-getter",
+          kGetGemDataByIndexRva,
+          kGetterPreflight) ||
+       !RequireCodePreflight(
+          executable_hash,
+          "status-rebuild",
+          kStatusRebuildRva,
+          kStatusRebuildPreflight) ||
+       !RequireCodePreflight(
+          executable_hash,
+          "status-notifier",
+          kStatusNotifierRva,
+          kStatusNotifierPreflight) ||
+       !RequireCodePreflight(
+          executable_hash,
+          "status-owner-tick",
+          kStatusOwnerTickRva,
+          kStatusOwnerTickPreflight) ||
+       !RequireCodePreflight(
+          executable_hash,
+          "status-owner-character-loop",
+          kStatusOwnerCharacterLoopRva,
           kStatusOwnerCharacterLoopPreflight))
    {
-      SetRuntimeMessage("Native code preflight failed; no hook or byte patch was installed.", true);
       return false;
    }
 
@@ -632,8 +687,8 @@ bool InstallHooks()
 
    g_hooks_ready.store(true, std::memory_order_release);
    SetRuntimeMessage(
-      "Test7 ready with " + std::to_string(GetVirtualSlotCount()) +
-         " virtual slots: direct character-hash battle injection is enabled for all context-1 statuses.",
+      "Native hook installation completed with " +
+         std::to_string(GetVirtualSlotCount()) + " virtual slots.",
       false);
    return true;
 }
