@@ -25,6 +25,13 @@ internal static unsafe partial class NativeCore
         out uint exceptionCode);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    private static extern ulong GBFR20_ResolveHookChainTarget(
+        ulong functionAddress,
+        uint maxJumpCount,
+        out uint jumpCount,
+        out HookChainResolveStatus status);
+
+    [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     private static extern int GBFR20_GetState(out RuntimeState state, uint stateSize);
 
     [DllImport(LibraryName, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
@@ -107,6 +114,16 @@ internal static unsafe partial class NativeCore
             syncInterval,
             presentFlags,
             out exceptionCode);
+    private static ulong NativeResolveHookChainTarget(
+        ulong functionAddress,
+        uint maxJumpCount,
+        out uint jumpCount,
+        out HookChainResolveStatus status) =>
+        GBFR20_ResolveHookChainTarget(
+            functionAddress,
+            maxJumpCount,
+            out jumpCount,
+            out status);
     private static int NativeGetState(out RuntimeState state, uint size) =>
         GBFR20_GetState(out state, size);
     private static uint NativeCopyRuntimeMessage(sbyte* buffer, uint size) =>

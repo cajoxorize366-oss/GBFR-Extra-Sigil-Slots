@@ -44,6 +44,8 @@ namespace GBFR.ExtraSigilSlots.Reloaded;
 /// </summary>
 internal sealed unsafe class SafeImguiHookDx11 : IImguiHook
 {
+    private const uint MaxPresentHookChainJumps = 16;
+
     private static readonly string[] SupportedDlls =
     [
         "d3d11.dll",
@@ -100,6 +102,23 @@ internal sealed unsafe class SafeImguiHookDx11 : IImguiHook
 
         long presentPointer =
             (long)DX11Hook.DXGIVTable[(int)IDXGISwapChain.Present].FunctionPointer;
+        ulong hookTarget = NativeCore.ResolveHookChainTarget(
+            unchecked((ulong)presentPointer),
+            MaxPresentHookChainJumps,
+            out uint existingJumpCount,
+            out NativeCore.HookChainResolveStatus resolveStatus);
+        if (hookTarget == 0)
+        {
+            throw new InvalidOperationException(
+                $"DX11 Present hook-chain resolution failed with status {resolveStatus} " +
+                $"after {existingJumpCount} jump(s).");
+        }
+        if (existingJumpCount > 0)
+        {
+            TryLog(
+                $"DX11 Present hook chaining followed {existingJumpCount} existing entry " +
+                $"jump(s); installing at chain tail 0x{hookTarget:X}.");
+        }
 
         s_instance = this;
         try
@@ -107,7 +126,7 @@ internal sealed unsafe class SafeImguiHookDx11 : IImguiHook
             _presentHook = SDK.Hooks.CreateHook<DX11Hook.Present>(
                 typeof(SafeImguiHookDx11),
                 nameof(PresentImplStatic),
-                presentPointer);
+                unchecked((long)hookTarget));
             Volatile.Write(
                 ref _originalPresentAddress,
                 _presentHook.OriginalFunctionAddress);

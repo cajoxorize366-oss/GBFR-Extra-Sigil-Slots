@@ -6,7 +6,7 @@ namespace GBFR.ExtraSigilSlots.Reloaded;
 
 internal static unsafe partial class NativeCore
 {
-    internal const int AbiVersion = 9;
+    internal const int AbiVersion = 10;
     internal const int DefaultVirtualSlotCount = 8;
     internal const int VirtualSlotCapacity = 24;
     internal const int OwnerCharacterCapacity = 4;
@@ -51,6 +51,17 @@ internal static unsafe partial class NativeCore
         Disabled = -3,
         CharacterRestricted = -4,
         Duplicate = -5,
+    }
+
+    internal enum HookChainResolveStatus : uint
+    {
+        Ok = 0,
+        InvalidArgument = 1,
+        Unreadable = 2,
+        NonExecutable = 3,
+        Cycle = 4,
+        DepthExceeded = 5,
+        UnsupportedJump = 6,
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -194,6 +205,17 @@ internal static unsafe partial class NativeCore
             unchecked((uint)syncInterval),
             presentFlags,
             out exceptionCode);
+
+    internal static ulong ResolveHookChainTarget(
+        ulong functionAddress,
+        uint maxJumpCount,
+        out uint jumpCount,
+        out HookChainResolveStatus status) =>
+        NativeResolveHookChainTarget(
+            functionAddress,
+            maxJumpCount,
+            out jumpCount,
+            out status);
 
     internal static bool TryGetState(out RuntimeState state)
     {
