@@ -62,6 +62,7 @@ public sealed partial class Mod
     {
         try
         {
+            MouseButtonStateTracker.ObserveWindowMessage(message, wParam);
             FrontendOverlayGate.ObserveWindowMessage(message, wParam, lParam);
             bool captureInput = Volatile.Read(ref s_captureInput) != 0;
             if (captureInput)

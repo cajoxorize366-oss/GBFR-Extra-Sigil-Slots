@@ -148,6 +148,7 @@ internal sealed unsafe partial class SigilOverlayUi
                 ImGuiWindowFlagsNoSavedSettings))
             return;
 
+        ImGui.BeginDisabled(!_mouseInteractionGate.IsArmed);
         SigilPreset? selected = ResolveSelectedPreset();
         ImGui.BeginChildStr("PresetList##GBFRES", _presetManagerChildSize, true, 0);
         for (int index = 0; index < _presetStore.Presets.Count; ++index)
@@ -205,6 +206,7 @@ internal sealed unsafe partial class SigilOverlayUi
             ImGui.CloseCurrentPopup();
             _presetManagerOpen = false;
         }
+        ImGui.EndDisabled();
         ImGui.EndPopup();
     }
 
@@ -243,6 +245,7 @@ internal sealed unsafe partial class SigilOverlayUi
             return;
         }
 
+        ImGui.BeginDisabled(!_mouseInteractionGate.IsArmed);
         ImGui.Text(english ? "Preset name" : "预设名称");
         ImGui.SetNextItemWidth(-1.0f);
         fixed (byte* nameBuffer = _presetNameBuffer)
@@ -272,6 +275,7 @@ internal sealed unsafe partial class SigilOverlayUi
             _presetNameMode = PresetNameMode.None;
             ImGui.CloseCurrentPopup();
         }
+        ImGui.EndDisabled();
         ImGui.EndPopup();
     }
 

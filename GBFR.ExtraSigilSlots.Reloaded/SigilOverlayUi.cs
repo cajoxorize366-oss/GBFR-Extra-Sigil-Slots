@@ -15,6 +15,7 @@ internal sealed unsafe partial class SigilOverlayUi : IDisposable
 
     private readonly Action<bool> _setInputCapture;
     private readonly Action<string> _log;
+    private readonly MouseInteractionGate _mouseInteractionGate = new();
     private readonly List<NativeCore.InventoryView> _inventory = [];
     private readonly Dictionary<uint, NativeCore.InventoryView> _inventoryBySlot = [];
     private readonly List<int> _filteredIndices = [];
@@ -67,6 +68,8 @@ internal sealed unsafe partial class SigilOverlayUi : IDisposable
         if (!_windowOpen)
             return;
 
+        _mouseInteractionGate.Observe(MouseButtonStateTracker.PressedButtons);
+
         if (!NativeCore.TryGetState(out _state))
         {
             SetWindowOpen(false);
@@ -75,8 +78,6 @@ internal sealed unsafe partial class SigilOverlayUi : IDisposable
         FrontendOverlayGate.SetToggleKey(_state.ToggleKey);
         if (openedThisFrame)
             RefreshInventory();
-
-        MaintainReleasedMouse();
 
         if (_inventory.Count == 0 || NativeCore.IsInventoryDirty())
             RefreshInventory();
@@ -106,7 +107,13 @@ internal sealed unsafe partial class SigilOverlayUi : IDisposable
             return;
         }
         SetWindowOpen(open);
+        if (!open)
+        {
+            ImGui.End();
+            return;
+        }
 
+        ImGui.BeginDisabled(!_mouseInteractionGate.IsArmed);
         english = DrawLanguageSelector(english);
         string characterName = UiLocalization.CharacterName(characterHash, english);
         ImGui.Text(
@@ -141,6 +148,7 @@ internal sealed unsafe partial class SigilOverlayUi : IDisposable
 
         ImGui.Separator();
         bool requestPickerPopup = DrawVirtualSlots(characterHash, canEdit, english);
+        ImGui.EndDisabled();
         string pickerTitle = english
             ? "Select an inventory sigil##Reloaded"
             : "选择库存因子##Reloaded";
@@ -183,6 +191,7 @@ internal sealed unsafe partial class SigilOverlayUi : IDisposable
             return;
         }
 
+        ImGui.BeginDisabled(!_mouseInteractionGate.IsArmed);
         ImGui.Text(
             english
                 ? $"Extra slot {NativeSlotCount + _pickerSlot}"
@@ -239,11 +248,13 @@ internal sealed unsafe partial class SigilOverlayUi : IDisposable
             ImGui.ImGuiListClipperEnd(clipper);
         }
         ImGui.EndChild();
+        ImGui.EndDisabled();
 
         OpenRequestedInventoryConflictDialogs(english);
         if (DrawInventoryConflictDialogs(characterHash, english))
             ClosePickerPopup();
 
+        ImGui.BeginDisabled(!_mouseInteractionGate.IsArmed);
         if (ImGui.Button(english ? "Clear this slot" : "清空此槽", _zeroSize))
         {
             ClearVirtualSlot(characterHash, _pickerSlot);
@@ -252,6 +263,7 @@ internal sealed unsafe partial class SigilOverlayUi : IDisposable
         ImGui.SameLine(0.0f, -1.0f);
         if (ImGui.Button(english ? "Cancel" : "取消", _zeroSize))
             ClosePickerPopup();
+        ImGui.EndDisabled();
         ImGui.EndPopup();
         if (!_pickerOpen)
             _pickerSlot = -1;
@@ -446,9 +458,16 @@ internal sealed unsafe partial class SigilOverlayUi : IDisposable
         _windowOpen = open;
         _setInputCapture(open);
         if (open)
+        {
+            _mouseInteractionGate.Open();
+            ResetImGuiMouseState();
             BeginReleasedMouse();
+        }
         else
+        {
+            _mouseInteractionGate.Close();
             RestoreMouseCapture();
+        }
         if (!open)
         {
             _pickerSlot = -1;
@@ -469,13 +488,13 @@ internal sealed unsafe partial class SigilOverlayUi : IDisposable
         ClipCursor(IntPtr.Zero);
     }
 
-    private static void MaintainReleasedMouse()
+    private static void ResetImGuiMouseState()
     {
-        // The native game-local ClipCursor gate keeps any new game request
-        // unclipped while input capture is active. Repeating ClipCursor(NULL)
-        // here only creates unnecessary compositor/cursor work every frame.
-        if (GetCapture() != IntPtr.Zero)
-            ReleaseCapture();
+        var io = ImGui.GetIO();
+        ImGui.ImGuiIO_ClearInputKeys(io);
+        for (int button = 0; button < 5; ++button)
+            ImGui.ImGuiIO_AddMouseButtonEvent(io, button, false);
+        ImGui.ClearActiveID();
     }
 
     private void RestoreMouseCapture()

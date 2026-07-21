@@ -145,11 +145,13 @@ internal sealed unsafe partial class SigilOverlayUi
             ? "To put it in a virtual extension slot, remove it from that character first,"
             : "若你想将其放入虚拟扩展栏，请先到对应角色位置脱除因子，");
         ImGui.Text(english ? "then add it again." : "然后再重新添加。");
+        ImGui.BeginDisabled(!_mouseInteractionGate.IsArmed);
         if (ImGui.Button(english ? "OK" : "知道了", _zeroSize))
         {
             _pendingBodyItem = null;
             ImGui.CloseCurrentPopup();
         }
+        ImGui.EndDisabled();
         ImGui.EndPopup();
     }
 
@@ -193,6 +195,7 @@ internal sealed unsafe partial class SigilOverlayUi
             ? "Every related preset position will also be cleared."
             : "所有相关预设中的对应位置也会直接清空。");
 
+        ImGui.BeginDisabled(!_mouseInteractionGate.IsArmed);
         ImGui.Checkbox(
             english ? "Do not ask again while this menu is open"
                     : "当前菜单期间不再提示",
@@ -212,6 +215,7 @@ internal sealed unsafe partial class SigilOverlayUi
                 closePicker = true;
             }
         }
+        ImGui.EndDisabled();
         ImGui.EndPopup();
         return closePicker;
     }

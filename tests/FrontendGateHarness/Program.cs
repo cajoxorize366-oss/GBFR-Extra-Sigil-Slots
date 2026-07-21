@@ -69,6 +69,66 @@ Assert(!ReadBool(shouldRender), "An even toggle count must return the frontend t
 
 Console.WriteLine("FRONTEND_EVENT_GATE=PASS");
 
+Type buttonTrackerType = assembly.GetType(
+    "GBFR.ExtraSigilSlots.Reloaded.MouseButtonStateTracker",
+    throwOnError: true)!;
+MethodInfo resetButtons = GetStaticMethod(buttonTrackerType, "Reset");
+MethodInfo observeMouseMessage = GetStaticMethod(buttonTrackerType, "ObserveWindowMessage");
+PropertyInfo pressedButtons = GetStaticProperty(buttonTrackerType, "PressedButtons");
+
+resetButtons.Invoke(null, null);
+observeMouseMessage.Invoke(null, [0x0201u, IntPtr.Zero]);
+Assert(ReadUInt(pressedButtons) == 1u, "Left-button down must be tracked.");
+observeMouseMessage.Invoke(null, [0x0204u, IntPtr.Zero]);
+Assert(ReadUInt(pressedButtons) == 3u, "Multiple held mouse buttons must be tracked.");
+observeMouseMessage.Invoke(null, [0x0202u, IntPtr.Zero]);
+Assert(ReadUInt(pressedButtons) == 2u, "Left-button up must preserve other buttons.");
+observeMouseMessage.Invoke(null, [0x0205u, IntPtr.Zero]);
+Assert(ReadUInt(pressedButtons) == 0u, "Button-up messages must clear the tracker.");
+observeMouseMessage.Invoke(null, [0x020Bu, new IntPtr(1L << 16)]);
+Assert(ReadUInt(pressedButtons) == 8u, "XBUTTON1 down must be tracked.");
+observeMouseMessage.Invoke(null, [0x020Cu, new IntPtr(1L << 16)]);
+Assert(ReadUInt(pressedButtons) == 0u, "XBUTTON1 up must be tracked.");
+
+Type mouseGateType = assembly.GetType(
+    "GBFR.ExtraSigilSlots.Reloaded.MouseInteractionGate",
+    throwOnError: true)!;
+object mouseGate = Activator.CreateInstance(mouseGateType, nonPublic: true) ??
+    throw new InvalidOperationException("Mouse interaction gate could not be created.");
+MethodInfo openMouseGate = GetInstanceMethod(mouseGateType, "Open");
+MethodInfo closeMouseGate = GetInstanceMethod(mouseGateType, "Close");
+MethodInfo observeButtons = GetInstanceMethod(mouseGateType, "Observe");
+PropertyInfo mouseGateArmed = GetInstanceProperty(mouseGateType, "IsArmed");
+
+openMouseGate.Invoke(mouseGate, null);
+Assert(!ReadInstanceBool(mouseGate, mouseGateArmed),
+    "Opening must disarm pointer interaction immediately.");
+observeButtons.Invoke(mouseGate, [1u]);
+Assert(!ReadInstanceBool(mouseGate, mouseGateArmed),
+    "A held mouse button must keep pointer interaction disarmed.");
+observeButtons.Invoke(mouseGate, [0u]);
+Assert(!ReadInstanceBool(mouseGate, mouseGateArmed),
+    "The release frame itself must remain non-interactive.");
+observeButtons.Invoke(mouseGate, [2u]);
+Assert(!ReadInstanceBool(mouseGate, mouseGateArmed),
+    "A button pressed before the clean boundary must restart arming.");
+observeButtons.Invoke(mouseGate, [0u]);
+Assert(!ReadInstanceBool(mouseGate, mouseGateArmed),
+    "The restarted release frame must remain non-interactive.");
+observeButtons.Invoke(mouseGate, [0u]);
+Assert(ReadInstanceBool(mouseGate, mouseGateArmed),
+    "Two clean released frames must arm pointer interaction.");
+closeMouseGate.Invoke(mouseGate, null);
+Assert(!ReadInstanceBool(mouseGate, mouseGateArmed),
+    "Closing must disarm and reset pointer interaction.");
+openMouseGate.Invoke(mouseGate, null);
+observeButtons.Invoke(mouseGate, [0u]);
+Assert(!ReadInstanceBool(mouseGate, mouseGateArmed),
+    "Reopening must not inherit the previous armed state.");
+
+resetButtons.Invoke(null, null);
+Console.WriteLine("MOUSE_INTERACTION_LIFECYCLE=PASS");
+
 MethodInfo GetMethod(string name) => gate.GetMethod(
     name,
     BindingFlags.NonPublic | BindingFlags.Static) ??
@@ -80,6 +140,31 @@ PropertyInfo GetProperty(string name) => gate.GetProperty(
     throw new MissingMemberException(gate.FullName, name);
 
 static bool ReadBool(PropertyInfo property) => (bool)(property.GetValue(null) ?? false);
+
+static uint ReadUInt(PropertyInfo property) => (uint)(property.GetValue(null) ?? 0u);
+
+static bool ReadInstanceBool(object instance, PropertyInfo property) =>
+    (bool)(property.GetValue(instance) ?? false);
+
+static MethodInfo GetStaticMethod(Type type, string name) => type.GetMethod(
+    name,
+    BindingFlags.NonPublic | BindingFlags.Static) ??
+    throw new MissingMethodException(type.FullName, name);
+
+static PropertyInfo GetStaticProperty(Type type, string name) => type.GetProperty(
+    name,
+    BindingFlags.NonPublic | BindingFlags.Static) ??
+    throw new MissingMemberException(type.FullName, name);
+
+static MethodInfo GetInstanceMethod(Type type, string name) => type.GetMethod(
+    name,
+    BindingFlags.NonPublic | BindingFlags.Instance) ??
+    throw new MissingMethodException(type.FullName, name);
+
+static PropertyInfo GetInstanceProperty(Type type, string name) => type.GetProperty(
+    name,
+    BindingFlags.NonPublic | BindingFlags.Instance) ??
+    throw new MissingMemberException(type.FullName, name);
 
 static void Assert(bool condition, string message)
 {
