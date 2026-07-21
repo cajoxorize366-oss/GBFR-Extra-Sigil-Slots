@@ -49,6 +49,7 @@ MethodInfo windowClassifier = windowClassifierType.GetMethod(
     (0x0100, true, "WM_KEYDOWN"),
     (0x0109, true, "WM_UNICHAR"),
     (0x010F, true, "WM_IME_COMPOSITION"),
+    (0x00A1, true, "WM_NCLBUTTONDOWN"),
     (0x0200, true, "WM_MOUSEMOVE"),
     (0x0240, true, "WM_TOUCH"),
     (0x0286, true, "WM_IME_CHAR"),
@@ -67,6 +68,39 @@ foreach ((uint message, bool expected, string name) in windowCases)
 }
 
 Console.WriteLine("WINDOW_INPUT_CLASSIFICATION=PASS");
+
+Type capturePolicyType = assembly.GetType(
+    "GBFR.ExtraSigilSlots.Reloaded.InputCapturePolicy",
+    throwOnError: true
+)!;
+MethodInfo capturePolicy = capturePolicyType.GetMethod(
+    "ShouldCaptureWindowMessages",
+    BindingFlags.NonPublic | BindingFlags.Static
+) ?? throw new MissingMethodException(
+    capturePolicyType.FullName,
+    "ShouldCaptureWindowMessages"
+);
+
+(bool MenuOpen, bool NativeActive, bool Capture, string Name)[] captureCases =
+[
+    (true, true, true, "open menu with native barrier"),
+    (true, false, true, "open menu without native barrier"),
+    (false, false, false, "closed menu after native release"),
+    (false, true, false, "closed menu while native barrier drains"),
+];
+foreach ((bool menuOpen, bool nativeActive, bool expected, string name) in captureCases)
+{
+    bool actual = (bool)(capturePolicy.Invoke(null, [menuOpen, nativeActive]) ?? false);
+    if (actual != expected)
+        throw new InvalidOperationException(
+            $"Window capture policy ({name}): expected capture={expected}, got {actual}."
+        );
+    Console.WriteLine(
+        $"MENU_OPEN={menuOpen} NATIVE_ACTIVE={nativeActive} WINDOW_CAPTURE={actual}"
+    );
+}
+
+Console.WriteLine("WINDOW_CAPTURE_LIFECYCLE=PASS");
 
 sealed class PluginLoadContext(string pluginPath) : AssemblyLoadContext
 {

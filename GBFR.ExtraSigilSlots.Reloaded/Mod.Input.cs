@@ -10,17 +10,25 @@ public sealed partial class Mod
 {
     private static void SetInputCapture(bool capture)
     {
-        bool effective = capture;
+        bool nativeBarrierActive = capture;
         try
         {
             NativeCore.SetInputCapture(capture);
-            effective = capture || NativeCore.IsInputCaptureActive();
+            nativeBarrierActive = NativeCore.IsInputCaptureActive();
         }
         catch
         {
             // Keep the Win32 barrier available even if the native input layer is unavailable.
         }
-        int captureValue = effective ? 1 : 0;
+
+        // The native polling barrier may remain active briefly after closing so
+        // a held key or mouse button cannot leak into the game. Window messages
+        // must follow menu visibility immediately; otherwise non-client mouse
+        // messages stay swallowed and a borderless game window cannot be moved.
+        int captureValue = InputCapturePolicy.ShouldCaptureWindowMessages(
+            capture,
+            nativeBarrierActive
+        ) ? 1 : 0;
         int previousValue = Interlocked.Exchange(ref s_captureInput, captureValue);
         if (previousValue != captureValue)
             ClearTextInputState();
