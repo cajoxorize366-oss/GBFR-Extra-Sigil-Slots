@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowRightLeft,
   Check,
@@ -139,6 +139,8 @@ function App() {
   const [connectionError, setConnectionError] = useState("");
   const [loading, setLoading] = useState<string | null>(null);
   const [suppressTransferPrompt, setSuppressTransferPrompt] = useState(false);
+  const connectionInFlightRef = useRef(false);
+  const autoConnectSuppressedPidRef = useRef<number | null>(null);
 
   const isConnected = dashboard !== null;
   const currentCharacterHash = dashboard?.ui_selected_character_hash || dashboard?.effective_character_hash || defaultCharacterHash;
@@ -151,16 +153,43 @@ function App() {
   const managerSelectedPreset = managerPresets.find((preset) => preset.id === managerPresetId) ?? managerPresets[0];
 
   useEffect(() => {
+    if (dashboard) return;
     let active = true;
-    void api.listGameProcesses().then((nextProcesses) => {
-      if (active) setProcesses(nextProcesses);
-    }).catch((error: unknown) => {
-      if (active) setConnectionError(error instanceof Error ? error.message : String(error));
-    });
+    let scanInFlight = false;
+    const scanProcesses = async (): Promise<void> => {
+      if (!active || scanInFlight || connectionInFlightRef.current) return;
+      scanInFlight = true;
+      try {
+        const nextProcesses = await api.listGameProcesses();
+        if (!active) return;
+        setProcesses(nextProcesses);
+        const soleProcess = nextProcesses.length === 1 ? nextProcesses[0] : undefined;
+        setSelectedPid((current) => {
+          if (soleProcess) return soleProcess.pid;
+          return current !== null && nextProcesses.some((process) => process.pid === current) ? current : null;
+        });
+
+        let suppressedPid = autoConnectSuppressedPidRef.current;
+        if (suppressedPid !== null && !nextProcesses.some((process) => process.pid === suppressedPid)) {
+          autoConnectSuppressedPidRef.current = null;
+          suppressedPid = null;
+        }
+        if (soleProcess && soleProcess.pid !== suppressedPid) {
+          void connectToProcess(soleProcess.pid, true);
+        }
+      } catch (error: unknown) {
+        if (active) setConnectionError(error instanceof Error ? error.message : String(error));
+      } finally {
+        scanInFlight = false;
+      }
+    };
+    void scanProcesses();
+    const timer = window.setInterval(() => void scanProcesses(), 1_000);
     return () => {
       active = false;
+      window.clearInterval(timer);
     };
-  }, []);
+  }, [dashboard?.connection.pid]);
 
   useEffect(() => {
     if (pickerSlot === null && !modal && !managerOpen) return;
@@ -234,27 +263,44 @@ function App() {
     }
   }
 
-  async function handleConnect(): Promise<void> {
-    if (selectedPid === null) return;
+  async function connectToProcess(pid: number, automatic: boolean): Promise<void> {
+    if (connectionInFlightRef.current || dashboard) return;
+    connectionInFlightRef.current = true;
+    setSelectedPid(pid);
     setLoading("connect");
     setConnectionError("");
     try {
-      const nextConnection = await api.connectGame(selectedPid);
+      const nextConnection = await api.connectGame(pid);
       const nextDashboard = await api.getDashboard();
       await loadConnectedData({ ...nextDashboard, connection: nextConnection });
-      setNotice({ message: language === "en" ? "Connected to the selected game process." : "已连接到选定的游戏进程。", kind: "success" });
+      autoConnectSuppressedPidRef.current = null;
+      setNotice({
+        message: automatic
+          ? language === "en" ? "Game detected, injected, and connected automatically." : "已自动检测、注入并连接游戏。"
+          : language === "en" ? "Connected to the selected game process." : "已连接到选定的游戏进程。",
+        kind: "success",
+      });
     } catch (error: unknown) {
       await api.disconnectGame().catch(() => undefined);
+      autoConnectSuppressedPidRef.current = pid;
       setConnectionError(error instanceof Error ? error.message : String(error));
     } finally {
+      connectionInFlightRef.current = false;
       setLoading(null);
     }
+  }
+
+  async function handleConnect(): Promise<void> {
+    if (selectedPid === null) return;
+    autoConnectSuppressedPidRef.current = null;
+    await connectToProcess(selectedPid, false);
   }
 
   async function handleDisconnect(): Promise<void> {
     setLoading("disconnect");
     try {
       await api.disconnectGame();
+      autoConnectSuppressedPidRef.current = dashboard?.connection.pid ?? null;
       setDashboard(null);
       setInventory([]);
       setSelection(Array(24).fill(0));
@@ -563,13 +609,14 @@ function App() {
 
   function renderConnectionPage(): ReactNode {
     const selectedProcess = processes.find((process) => process.pid === selectedPid);
+    const autoConnectPaused = selectedProcess?.pid === autoConnectSuppressedPidRef.current;
     return (
       <main className="connection-page">
         <section className="connection-intro">
           <div>
             <div className="eyebrow">{language === "en" ? "CONTROL SESSION" : "控制会话"}</div>
             <h1>{language === "en" ? "Connect to a running game" : "连接正在运行的游戏"}</h1>
-            <p>{language === "en" ? "Select the exact x64 game process to inspect its sigil state." : "选择准确的 x64 游戏进程以读取因子状态。"}</p>
+            <p>{language === "en" ? "A single compatible game process is detected, injected, and connected automatically. Choose manually only when several are running." : "检测到唯一兼容游戏进程后会自动注入并连接；只有同时运行多个进程时才需要手动选择。"}</p>
           </div>
           <IconButton label={language === "en" ? "Refresh process list" : "刷新进程列表"} onClick={() => void handleRefreshProcesses()} disabled={loading === "processes"}>
             <RefreshCw size={17} className={loading === "processes" ? "spin" : ""} />
@@ -604,7 +651,7 @@ function App() {
                   <strong>{process.executable_name}</strong>
                   <small>{process.executable_path}</small>
                 </span>
-                <span>{process.agent_loaded ? <StatusBadge tone="green">{language === "en" ? "Loaded" : "已加载"}</StatusBadge> : <StatusBadge tone="amber">{language === "en" ? "Inject on connect" : "连接时注入"}</StatusBadge>}</span>
+                <span>{process.agent_loaded ? <StatusBadge tone="green">{language === "en" ? "Loaded" : "已加载"}</StatusBadge> : <StatusBadge tone="amber">{language === "en" ? "Auto inject" : "自动注入"}</StatusBadge>}</span>
               </button>
             ))}
             {processes.length === 0 && <div className="empty-state">{language === "en" ? "No compatible game process found." : "未找到兼容的游戏进程。"}</div>}
@@ -612,8 +659,12 @@ function App() {
           <div className="connection-footer">
             <div className="error-copy" role="status" aria-live="polite">
               {connectionError && <><CircleAlert size={16} /> <span>{connectionError}</span></>}
-              {!connectionError && selectedProcess && <span>{selectedProcess.agent_loaded ? (language === "en" ? "Existing Agent will be reused." : "将复用现有 Agent。") : (language === "en" ? "The selected process will be validated again before injection." : "注入前会再次核验选定进程。")}</span>}
-              {!connectionError && !selectedProcess && <span>{language === "en" ? "Choose a process to continue." : "选择一个进程以继续。"}</span>}
+              {!connectionError && loading === "connect" && <span>{language === "en" ? "Preparing the Agent and waiting for IPC to become ready..." : "正在准备 Agent，并等待 IPC 完全就绪……"}</span>}
+              {!connectionError && loading !== "connect" && selectedProcess && processes.length === 1 && <span>{autoConnectPaused
+                ? language === "en" ? "Automatic connection is paused for this process. Click Connect to try again." : "已暂停对此进程的自动连接；点击“连接”可再次尝试。"
+                : selectedProcess.agent_loaded ? (language === "en" ? "Existing Agent detected; connection will resume automatically." : "已检测到现有 Agent，将自动恢复连接。") : (language === "en" ? "The game was detected and will be injected automatically." : "已检测到游戏，将自动完成注入。")}</span>}
+              {!connectionError && loading !== "connect" && selectedProcess && processes.length > 1 && <span>{selectedProcess.agent_loaded ? (language === "en" ? "Existing Agent will be reused." : "将复用现有 Agent。") : (language === "en" ? "The selected process will be validated again before injection." : "注入前会再次核验选定进程。")}</span>}
+              {!connectionError && loading !== "connect" && !selectedProcess && <span>{language === "en" ? "Scanning automatically; no manual refresh is required." : "正在自动检测游戏进程，无需手动刷新。"}</span>}
             </div>
             <button type="button" className="button button-primary" onClick={() => void handleConnect()} disabled={selectedPid === null || loading === "connect"}>
               {loading === "connect" ? <LoaderCircle size={16} className="spin" /> : <PlugZap size={16} />}

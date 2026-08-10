@@ -15,6 +15,7 @@ use protocol::{
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::Duration;
 use tauri::{Manager, State};
 
 const PRESET_FILE_NAME: &str = "GBFR-ExtraSigilSlots.presets.json";
@@ -129,8 +130,7 @@ fn connect_game(state: State<'_, BackendState>, pid: u32) -> Result<ConnectionIn
         .map_err(|_| "The controller operation lock is poisoned.".to_string())?;
     let process = process::verify_game_process(pid)?;
     let injected = ensure_agent(pid, &state.agent_path, &state.data_directory)?;
-    let mut pipe = PipeClient::connect(pid)?;
-    let hello = pipe.hello()?;
+    let (pipe, hello) = PipeClient::connect_ready(pid, Duration::from_secs(15))?;
     if hello.process_id != pid {
         return Err(format!(
             "Agent pipe identity mismatch: selected PID {pid}, Agent PID {}.",

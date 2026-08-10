@@ -209,17 +209,18 @@ h2 { color: var(--text); font-size: 15px; line-height: 1.2; }
 .modal-content { min-height: 0; overflow: hidden; padding: 15px 16px 16px; }
 .modal-regular .modal-content { overflow: auto; }
 .modal-wide .modal-content { display: flex; flex-direction: column; }
-.modal-wide .inventory-list { flex: 1 1 auto; max-height: none; }
+.modal-wide .picker-toolbar, .modal-wide .filter-segmented, .modal-wide .picker-summary { flex: 0 0 auto; }
+.modal-wide .inventory-list { min-height: 0; flex: 1 1 auto; max-height: none; }
 .modal-wide .modal-actions { flex: 0 0 auto; }
 .picker-toolbar { gap: 8px; }
 .search-field { display: flex; align-items: center; gap: 7px; min-width: 0; height: 33px; flex: 1; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 6px; color: var(--soft); background: var(--surface-strong); }
 .search-field input { width: 100%; min-width: 0; border: 0; outline: 0; color: var(--text); background: transparent; font-size: 12px; }
-.filter-segmented { display: flex; width: 100%; margin-top: 11px; overflow: auto; }
-.filter-segmented button { flex: 1; min-width: max-content; padding: 0 9px; }
-.picker-summary { justify-content: space-between; margin-top: 14px; color: var(--muted); font-size: 11px; }
+.filter-segmented { display: flex; width: 100%; min-height: 35px; margin-top: 11px; overflow-x: auto; overflow-y: hidden; }
+.filter-segmented button { min-height: 28px; flex: 1; min-width: max-content; padding: 0 9px; }
+.picker-summary { min-height: 24px; justify-content: space-between; margin-top: 8px; color: var(--muted); font-size: 11px; }
 .picker-summary strong { color: var(--text); font-size: 16px; }
 .inventory-list { min-height: 190px; max-height: 420px; margin-top: 8px; overflow: auto; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-.inventory-row { display: grid; grid-template-columns: 31px minmax(0, 1fr) minmax(200px, .85fr) 17px; align-items: center; gap: 10px; width: 100%; min-height: 63px; padding: 7px 8px; border-bottom: 1px solid #e2e8e6; color: var(--text); background: transparent; text-align: left; }
+.inventory-row { display: grid; grid-template-columns: 31px minmax(0, 1fr) minmax(200px, .85fr) 17px; align-items: center; gap: 10px; width: 100%; min-height: 63px; padding: 7px 8px; border-bottom: 1px solid #e2e8e6; color: var(--text); background: transparent; text-align: left; content-visibility: auto; contain-intrinsic-size: 63px; }
 .inventory-row:last-child { border-bottom: 0; }
 .inventory-row:hover { background: #f0f8f5; }
 .inventory-gem-mark { display: grid; width: 27px; height: 27px; place-items: center; border-radius: 5px; color: var(--teal-dark); background: var(--teal-soft); font-size: 11px; font-weight: 800; }

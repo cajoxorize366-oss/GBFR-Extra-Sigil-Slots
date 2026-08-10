@@ -165,7 +165,7 @@ function createMockState(): MockState {
 
 let mockState = createMockState();
 
-function mockProcessList(): GameProcess[] {
+function createMockProcessList(): GameProcess[] {
   return [
     {
       pid: 18244,
@@ -180,6 +180,12 @@ function mockProcessList(): GameProcess[] {
       agent_loaded: true,
     },
   ];
+}
+
+let mockProcesses = createMockProcessList();
+
+function mockProcessList(): GameProcess[] {
+  return mockProcesses;
 }
 
 function mockConnection(): ConnectionInfo {
@@ -447,9 +453,13 @@ export const api: StandaloneApi = {
 export const mockControls = {
   reset(): void {
     mockState = createMockState();
+    mockProcesses = createMockProcessList();
   },
   setEditAllowed(editAllowed: boolean): void {
     mockState.editAllowed = editAllowed;
+  },
+  setDetectedProcessCount(count: number): void {
+    mockProcesses = createMockProcessList().slice(0, count);
   },
 };
 

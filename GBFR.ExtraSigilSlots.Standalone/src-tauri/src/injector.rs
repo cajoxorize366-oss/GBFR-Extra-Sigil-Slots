@@ -1,4 +1,3 @@
-use crate::ipc::pipe_is_available;
 use crate::process::{find_module, find_module_base, verify_game_process, AGENT_MODULE_NAME};
 use std::ffi::{c_void, CString, OsStr};
 use std::mem::transmute;
@@ -37,11 +36,6 @@ pub fn ensure_agent(pid: u32, dll_path: &Path, data_directory: &Path) -> Result<
     validate_x64(process.0, pid)?;
 
     if let Some(existing) = find_module(pid, AGENT_MODULE_NAME)? {
-        if !pipe_is_available(pid) {
-            return Err(format!(
-                "PID {pid} already loaded {AGENT_MODULE_NAME}, but its Standalone pipe is unavailable. Disconnect another Standalone controller or disable the Reloaded-II/other copy before connecting."
-            ));
-        }
         invoke_bootstrap(
             process.0,
             pid,

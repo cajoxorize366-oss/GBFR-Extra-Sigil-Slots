@@ -33,6 +33,24 @@ describe("Standalone workbench", () => {
     expect(screen.getByText("注入前会再次核验选定进程。", { exact: false })).toBeInTheDocument();
   });
 
+  it("automatically injects and connects when exactly one game process is detected", async () => {
+    mockControls.setDetectedProcessCount(1);
+    render(<App />);
+    await waitFor(() => expect(screen.getByRole("heading", { name: "槽位选择" })).toBeInTheDocument());
+    expect(screen.getByText("已自动检测、注入并连接游戏。")).toBeInTheDocument();
+  });
+
+  it("keeps an explicitly disconnected single process disconnected", async () => {
+    mockControls.setDetectedProcessCount(1);
+    render(<App />);
+    const user = userEvent.setup();
+    await waitFor(() => expect(screen.getByRole("heading", { name: "槽位选择" })).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "断开" }));
+    await waitFor(() => expect(screen.getByText("已暂停对此进程的自动连接", { exact: false })).toBeInTheDocument());
+    await new Promise((resolve) => window.setTimeout(resolve, 1_100));
+    expect(screen.getByRole("heading", { name: "连接正在运行的游戏" })).toBeInTheDocument();
+  });
+
   it("renders the connected main layout", async () => {
     render(<App />);
     await connectToGame();

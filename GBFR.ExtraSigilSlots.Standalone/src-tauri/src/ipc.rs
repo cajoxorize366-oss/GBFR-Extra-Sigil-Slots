@@ -5,16 +5,21 @@ use crate::protocol::{
 use std::fs::{File, OpenOptions};
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
+use std::thread::sleep;
+use std::time::{Duration, Instant};
 use windows_sys::Win32::System::Pipes::WaitNamedPipeW;
+
+const CONNECT_ATTEMPT_WAIT_MS: u32 = 250;
+const CONNECT_RETRY_INTERVAL: Duration = Duration::from_millis(75);
 
 pub struct PipeClient {
     client: ProtocolClient<File>,
 }
 
 impl PipeClient {
-    pub fn connect(pid: u32) -> Result<Self, String> {
+    fn connect_with_timeout(pid: u32, timeout_ms: u32) -> Result<Self, String> {
         let path = pipe_name(pid);
-        wait_for_pipe(&path, 5_000)?;
+        wait_for_pipe(&path, timeout_ms)?;
         let file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -23,6 +28,27 @@ impl PipeClient {
         Ok(Self {
             client: ProtocolClient::new(file),
         })
+    }
+
+    pub fn connect_ready(pid: u32, timeout: Duration) -> Result<(Self, HelloResponse), String> {
+        let started = Instant::now();
+        loop {
+            let last_error = match Self::connect_with_timeout(pid, CONNECT_ATTEMPT_WAIT_MS) {
+                Ok(mut pipe) => match pipe.hello() {
+                    Ok(hello) => return Ok((pipe, hello)),
+                    Err(error) => error,
+                },
+                Err(error) => error,
+            };
+
+            if started.elapsed() >= timeout {
+                return Err(format!(
+                    "Agent for PID {pid} did not become ready within {} seconds. Last attempt: {last_error}",
+                    timeout.as_secs()
+                ));
+            }
+            sleep(CONNECT_RETRY_INTERVAL);
+        }
     }
 
     pub fn hello(&mut self) -> Result<HelloResponse, String> {
@@ -74,11 +100,6 @@ impl PipeClient {
     pub fn get_pending_virtual_slot_count(&mut self) -> Result<i32, String> {
         self.client.get_pending_virtual_slot_count()
     }
-}
-
-pub fn pipe_is_available(pid: u32) -> bool {
-    let path = pipe_name(pid);
-    wait_for_pipe(&path, 0).is_ok()
 }
 
 pub fn pipe_name(pid: u32) -> String {

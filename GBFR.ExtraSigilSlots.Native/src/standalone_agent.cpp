@@ -402,11 +402,20 @@ void PipeLoop()
    }
 }
 
+DWORD WINAPI InitializeStandalone(void*)
+{
+   (void)GBFR20_Initialize();
+   return 0;
+}
+
 DWORD WINAPI StandaloneMain(void*)
 {
    (void)GBFR20_SetInputHooksEnabled(0);
    g_standalone_owner_tick_enabled.store(true, std::memory_order_release);
-   (void)GBFR20_Initialize();
+   if (HANDLE initialize_thread =
+          CreateThread(nullptr, 0, &InitializeStandalone, nullptr, 0, nullptr);
+       initialize_thread != nullptr)
+      CloseHandle(initialize_thread);
    PipeLoop();
    return 0;
 }
