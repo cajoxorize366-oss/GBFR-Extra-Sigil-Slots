@@ -2,7 +2,7 @@
 
 Windows x64 desktop controller built with Rust, Tauri, React, and TypeScript. It
 finds a running `granblue_fantasy_relink.exe`, injects the bundled Native Agent,
-and exposes the v0.8.5 slot, inventory, language, count, and preset workflows in
+and exposes the v0.8.6 slot, inventory, language, count, and preset workflows in
 an external window. It does not install the old in-game ImGui/input frontend.
 
 ## Build

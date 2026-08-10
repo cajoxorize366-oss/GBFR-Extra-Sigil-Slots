@@ -1,5 +1,9 @@
 #include "../native_internal.h"
 
+#include <d3d11.h>
+#include <dxgi.h>
+#include <sstream>
+
 namespace
 {
 using DxgiPresentFn = int32_t(__stdcall*)(void*, uint32_t, uint32_t);
@@ -324,6 +328,196 @@ int CaptureExceptionCode(uint32_t code, uint32_t* destination) noexcept
    if (destination != nullptr)
       *destination = code;
    return EXCEPTION_EXECUTE_HANDLER;
+}
+}
+
+namespace gbfr::native
+{
+namespace
+{
+SafetyHookInline g_standalone_present_hook;
+std::atomic_uint32_t g_active_standalone_present_calls{0};
+std::atomic_bool g_standalone_present_seen{false};
+thread_local bool g_tls_standalone_present_tick_active = false;
+
+void ReleaseDummySwapChain(
+   IDXGISwapChain*& swap_chain,
+   ID3D11DeviceContext*& context,
+   ID3D11Device*& device,
+   HWND& window) noexcept
+{
+   if (swap_chain != nullptr)
+   {
+      swap_chain->Release();
+      swap_chain = nullptr;
+   }
+   if (context != nullptr)
+   {
+      context->Release();
+      context = nullptr;
+   }
+   if (device != nullptr)
+   {
+      device->Release();
+      device = nullptr;
+   }
+   if (window != nullptr)
+   {
+      DestroyWindow(window);
+      window = nullptr;
+   }
+}
+
+bool ResolveStandalonePresentTarget(uintptr_t& target) noexcept
+{
+   target = 0;
+   HWND window = CreateWindowExW(
+      0,
+      L"STATIC",
+      L"GBFR Extra Sigil Slots Standalone Present Probe",
+      WS_POPUP,
+      0,
+      0,
+      2,
+      2,
+      nullptr,
+      nullptr,
+      GetModuleHandleW(nullptr),
+      nullptr);
+   if (window == nullptr)
+      return false;
+
+   DXGI_SWAP_CHAIN_DESC description{};
+   description.BufferDesc.Width = 2;
+   description.BufferDesc.Height = 2;
+   description.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+   description.SampleDesc.Count = 1;
+   description.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+   description.BufferCount = 1;
+   description.OutputWindow = window;
+   description.Windowed = TRUE;
+   description.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+
+   IDXGISwapChain* swap_chain = nullptr;
+   ID3D11Device* device = nullptr;
+   ID3D11DeviceContext* context = nullptr;
+   D3D_FEATURE_LEVEL feature_level{};
+   const HRESULT result = D3D11CreateDeviceAndSwapChain(
+      nullptr,
+      D3D_DRIVER_TYPE_HARDWARE,
+      nullptr,
+      0,
+      nullptr,
+      0,
+      D3D11_SDK_VERSION,
+      &description,
+      &swap_chain,
+      &device,
+      &feature_level,
+      &context);
+   if (FAILED(result) || swap_chain == nullptr)
+   {
+      ReleaseDummySwapChain(swap_chain, context, device, window);
+      return false;
+   }
+
+   void** vtable = *reinterpret_cast<void***>(swap_chain);
+   const uintptr_t present_entry = vtable == nullptr
+      ? 0
+      : reinterpret_cast<uintptr_t>(vtable[8]);
+   uint32_t jump_count = 0;
+   uint32_t resolve_status = 0;
+   const uint64_t resolved = GBFR20_ResolveHookChainTarget(
+      present_entry,
+      16,
+      &jump_count,
+      &resolve_status);
+   ReleaseDummySwapChain(swap_chain, context, device, window);
+   if (resolved == 0)
+      return false;
+
+   target = static_cast<uintptr_t>(resolved);
+   return true;
+}
+
+HRESULT __stdcall StandalonePresentDetour(
+   IDXGISwapChain* swap_chain,
+   uint32_t sync_interval,
+   uint32_t present_flags)
+{
+   ActiveCallGuard active_call(g_active_standalone_present_calls);
+   if (!g_shutting_down.load(std::memory_order_acquire) &&
+       g_standalone_owner_tick_enabled.load(std::memory_order_acquire) &&
+       g_hooks_ready.load(std::memory_order_acquire) &&
+       !g_tls_standalone_present_tick_active)
+   {
+      g_tls_standalone_present_tick_active = true;
+      try
+      {
+         if (!g_standalone_present_seen.exchange(true, std::memory_order_acq_rel))
+         {
+            SetRuntimeMessage(
+               "Standalone DX11 Present tick source is active; queued virtual-sigil rebuilds now run on the game render thread.",
+               false);
+         }
+         GBFR20_Tick();
+      }
+      catch (...)
+      {
+         try
+         {
+            Log("Standalone DX11 Present tick contained an unexpected exception.");
+         }
+         catch (...)
+         {
+         }
+      }
+      g_tls_standalone_present_tick_active = false;
+   }
+
+   return g_standalone_present_hook.call<HRESULT>(
+      swap_chain, sync_interval, present_flags);
+}
+}
+
+bool InstallStandalonePresentTickHook()
+{
+   if (!g_standalone_owner_tick_enabled.load(std::memory_order_acquire))
+      return true;
+   if (g_standalone_present_hook)
+      return true;
+
+   uintptr_t target = 0;
+   if (!ResolveStandalonePresentTarget(target))
+   {
+      Log("Standalone DX11 Present target resolution failed.");
+      return false;
+   }
+
+   g_standalone_present_hook = safetyhook::create_inline(
+      reinterpret_cast<void*>(target),
+      reinterpret_cast<void*>(&StandalonePresentDetour));
+   if (!g_standalone_present_hook)
+   {
+      Log("Standalone DX11 Present tick hook installation failed.");
+      return false;
+   }
+
+   std::ostringstream message;
+   message << "Standalone DX11 Present tick hook installed at 0x"
+           << std::uppercase << std::hex << target << ".";
+   Log(message.str());
+   return true;
+}
+
+void ShutdownStandalonePresentTickHook() noexcept
+{
+   if (g_standalone_present_hook)
+      (void)g_standalone_present_hook.disable();
+   while (g_active_standalone_present_calls.load(std::memory_order_acquire) != 0)
+      SwitchToThread();
+   g_standalone_present_hook.reset();
+   g_standalone_present_seen.store(false, std::memory_order_release);
 }
 }
 

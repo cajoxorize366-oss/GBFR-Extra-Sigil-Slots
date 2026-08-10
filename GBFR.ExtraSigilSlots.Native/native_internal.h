@@ -443,6 +443,8 @@ void RestoreDirectInputInstanceHooks() noexcept;
 void ResetDirectInputInstanceHooks() noexcept;
 bool InstallInputIatHooks();
 void UpdateInputCaptureBarrier();
+bool InstallStandalonePresentTickHook();
+void ShutdownStandalonePresentTickHook() noexcept;
 
 void LoadSettingsAndSelections(bool activate_selection_ownership);
 bool ApplyPendingVirtualSlotCount();

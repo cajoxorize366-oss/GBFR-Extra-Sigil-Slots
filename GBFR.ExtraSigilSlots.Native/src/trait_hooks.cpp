@@ -27,7 +27,6 @@ std::atomic_uint32_t g_active_mid_calls{0};
 thread_local uint64_t g_tls_apply_generation = 0;
 thread_local NaturalContributionFrame g_tls_natural_contribution{};
 thread_local LocalContext1Binding g_tls_local_context1_binding{};
-thread_local bool g_tls_standalone_tick_active = false;
 std::atomic_uint64_t g_natural_bind_attempts{0};
 std::atomic_uint64_t g_natural_bind_successes{0};
 std::atomic_uint64_t g_natural_bind_status_address{0};
@@ -483,17 +482,6 @@ void OnStatusOwnerTick(safetyhook::Context&)
 
    g_status_owner_thread_id.store(GetCurrentThreadId(), std::memory_order_release);
    g_status_owner_tick_count.fetch_add(1, std::memory_order_acq_rel);
-   // Standalone has no Present tick source, so hot-apply must be pumped from
-   // the owner-tick function entry rather than the inner character loop, which
-   // can be skipped when no character iteration is available.
-   if (!g_standalone_owner_tick_enabled.load(std::memory_order_acquire) ||
-       !g_hooks_ready.load(std::memory_order_acquire) ||
-       g_tls_standalone_tick_active)
-      return;
-
-   g_tls_standalone_tick_active = true;
-   GBFR20_Tick();
-   g_tls_standalone_tick_active = false;
 }
 
 void OnStatusOwnerCharacterLoop(safetyhook::Context& context)
@@ -609,6 +597,7 @@ namespace
 void RollbackGameplayHookInstallation() noexcept
 {
    g_hooks_ready.store(false, std::memory_order_release);
+   ShutdownStandalonePresentTickHook();
    if (g_set_gem_protection_hook)
       (void)g_set_gem_protection_hook.disable();
    if (g_status_owner_tick_hook)
@@ -683,6 +672,7 @@ void ShutdownHooks()
 
    RestoreInputIatHooks();
    RestoreDirectInputInstanceHooks();
+   ShutdownStandalonePresentTickHook();
 
    if (g_local_context1_bind_return_hook)
       (void)g_local_context1_bind_return_hook.disable();
@@ -863,13 +853,30 @@ bool InstallHooks()
       return false;
    }
 
-   g_hooks_ready.store(true, std::memory_order_release);
+   const uint64_t present_tick_started =
+      BeginStartupPhase("standalone-present-tick-hook");
+   const bool present_tick_ready = InstallStandalonePresentTickHook();
+   CompleteStartupPhase(
+      "standalone-present-tick-hook", present_tick_started, present_tick_ready);
+   if (!present_tick_ready)
+   {
+      RollbackGameplayHookInstallation();
+      SetRuntimeMessage(
+         "Failed to install the Standalone DX11 Present tick hook; gameplay hooks were rolled back.",
+         true);
+      return false;
+   }
+
    ScheduleGemProtectionReconcile();
    SetRuntimeMessage(
       "Native hook installation completed with " +
          std::to_string(GetVirtualSlotCount()) +
-         " virtual slots; compatibility was resolved synchronously from unique semantic anchors and revalidated before every hook and byte patch.",
+         " virtual slots; compatibility was resolved synchronously from unique semantic anchors and revalidated before every hook and byte patch." +
+         (g_standalone_owner_tick_enabled.load(std::memory_order_acquire)
+             ? " The Standalone DX11 Present tick source is armed."
+             : ""),
       false);
+   g_hooks_ready.store(true, std::memory_order_release);
    return true;
 }
 }
