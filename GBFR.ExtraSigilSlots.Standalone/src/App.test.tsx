@@ -10,6 +10,7 @@ async function connectToGame(): Promise<ReturnType<typeof userEvent.setup>> {
   await user.click(screen.getByTestId("process-row-18244"));
   await user.click(screen.getByRole("button", { name: "连接" }));
   await waitFor(() => expect(screen.getByRole("heading", { name: "槽位选择" })).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText("已扫描 20 个因子")).toBeInTheDocument());
   return user;
 }
 
@@ -38,6 +39,28 @@ describe("Standalone workbench", () => {
     render(<App />);
     await waitFor(() => expect(screen.getByRole("heading", { name: "槽位选择" })).toBeInTheDocument());
     expect(screen.getByText("已自动检测、注入并连接游戏。")).toBeInTheDocument();
+  });
+
+  it("retries automatic connection after the injected Agent pipe is temporarily unavailable", async () => {
+    mockControls.setDetectedProcessCount(1);
+    mockControls.failNextConnections(1);
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText("Agent pipe is not ready yet.")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "槽位选择" })).toBeInTheDocument(), { timeout: 3_000 });
+    expect(screen.getByText("已自动检测、注入并连接游戏。")).toBeInTheDocument();
+  });
+
+  it("keeps the automatic connection while initial game data hydration retries", async () => {
+    mockControls.setDetectedProcessCount(1);
+    mockControls.failNextInventoryRefreshes(2);
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "槽位选择" })).toBeInTheDocument());
+    expect(screen.getByText("已连接")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("已连接，正在等待游戏数据就绪并自动重试。", { exact: false })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("已扫描 20 个因子")).toBeInTheDocument(), { timeout: 3_000 });
+    expect(screen.queryByText("已连接，正在等待游戏数据就绪并自动重试。", { exact: false })).not.toBeInTheDocument();
   });
 
   it("keeps an explicitly disconnected single process disconnected", async () => {

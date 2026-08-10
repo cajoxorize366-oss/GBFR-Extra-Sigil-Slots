@@ -137,14 +137,17 @@ function App() {
   const [slotCountInput, setSlotCountInput] = useState("8");
   const [notice, setNotice] = useState<Notice>(null);
   const [connectionError, setConnectionError] = useState("");
+  const [sessionHydrated, setSessionHydrated] = useState(false);
+  const [hydrationWarning, setHydrationWarning] = useState("");
   const [loading, setLoading] = useState<string | null>(null);
   const [suppressTransferPrompt, setSuppressTransferPrompt] = useState(false);
   const connectionInFlightRef = useRef(false);
+  const hydrationInFlightRef = useRef(false);
   const autoConnectSuppressedPidRef = useRef<number | null>(null);
 
   const isConnected = dashboard !== null;
   const currentCharacterHash = dashboard?.ui_selected_character_hash || dashboard?.effective_character_hash || defaultCharacterHash;
-  const editAllowed = dashboard?.edit_allowed ?? false;
+  const editAllowed = sessionHydrated && (dashboard?.edit_allowed ?? false);
   const activeSlotCount = dashboard?.virtual_slot_count ?? 8;
   const selectedPresetId = selectedPresetIds[currentCharacterHash];
   const currentPresets = presets.filter((preset) => preset.character_hash === currentCharacterHash);
@@ -205,6 +208,55 @@ function App() {
   }, [pickerSlot, modal, managerOpen]);
 
   useEffect(() => {
+    if (!dashboard || sessionHydrated) return;
+    let active = true;
+    let retryTimer: number | undefined;
+
+    const hydrate = async (): Promise<void> => {
+      if (!active) return;
+      if (hydrationInFlightRef.current) {
+        retryTimer = window.setTimeout(() => void hydrate(), 100);
+        return;
+      }
+
+      hydrationInFlightRef.current = true;
+      try {
+        const nextCharacterHash = dashboard.ui_selected_character_hash || dashboard.effective_character_hash || defaultCharacterHash;
+        const [nextInventory, nextPresets, nextSelection] = await Promise.all([
+          api.refreshInventory(),
+          api.listPresets(),
+          api.getSelection(nextCharacterHash),
+        ]);
+        if (!active) return;
+        setInventory(nextInventory);
+        setPresets(nextPresets.presets);
+        setSelection(nextSelection);
+        setHydrationWarning("");
+        setSessionHydrated(true);
+        const firstPreset = nextPresets.presets.find((preset) => preset.character_hash === nextCharacterHash);
+        if (firstPreset) {
+          setSelectedPresetIds((current) => ({ ...current, [firstPreset.character_hash]: current[firstPreset.character_hash] ?? firstPreset.id }));
+        }
+      } catch (error: unknown) {
+        if (!active) return;
+        const detail = error instanceof Error ? error.message : String(error);
+        setHydrationWarning(language === "en"
+          ? `Connected. Waiting for the game data to become ready; retrying automatically. ${detail}`
+          : `已连接，正在等待游戏数据就绪并自动重试。${detail}`);
+        retryTimer = window.setTimeout(() => void hydrate(), 500);
+      } finally {
+        hydrationInFlightRef.current = false;
+      }
+    };
+
+    void hydrate();
+    return () => {
+      active = false;
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
+    };
+  }, [dashboard?.connection.pid, sessionHydrated]);
+
+  useEffect(() => {
     if (!dashboard) return;
     let active = true;
     let polling = false;
@@ -217,21 +269,23 @@ function App() {
         const selectionPromise = nextCharacterHash !== currentCharacterHash
           ? api.getSelection(nextCharacterHash)
           : Promise.resolve<number[] | null>(null);
-        const inventoryPromise = nextDashboard.inventory_dirty
+        const inventoryPromise = sessionHydrated && nextDashboard.inventory_dirty
           ? api.refreshInventory()
           : Promise.resolve<InventoryItem[] | null>(null);
-        const [nextSelection, nextInventory] = await Promise.all([selectionPromise, inventoryPromise]);
+        const [nextSelectionResult, nextInventoryResult] = await Promise.allSettled([selectionPromise, inventoryPromise]);
         if (!active) return;
         setDashboard(nextDashboard);
         setLanguage(nextDashboard.language);
-        if (nextSelection) setSelection(nextSelection);
-        if (nextInventory) setInventory(nextInventory);
+        if (nextSelectionResult.status === "fulfilled" && nextSelectionResult.value) setSelection(nextSelectionResult.value);
+        if (nextInventoryResult.status === "fulfilled" && nextInventoryResult.value) setInventory(nextInventoryResult.value);
       }).catch(async (error: unknown) => {
         await api.disconnectGame().catch(() => undefined);
         if (!active) return;
         setDashboard(null);
         setInventory([]);
         setSelection(Array(24).fill(0));
+        setSessionHydrated(false);
+        setHydrationWarning("");
         setConnectionError(error instanceof Error ? error.message : String(error));
       }).finally(() => {
         polling = false;
@@ -241,27 +295,7 @@ function App() {
       active = false;
       window.clearInterval(timer);
     };
-  }, [dashboard?.connection.pid, currentCharacterHash]);
-
-  async function loadConnectedData(nextDashboard?: Dashboard): Promise<void> {
-    const nextDashboardValue = nextDashboard ?? await api.getDashboard();
-    const nextCharacterHash = nextDashboardValue.ui_selected_character_hash || nextDashboardValue.effective_character_hash || defaultCharacterHash;
-    const [nextInventory, nextPresets, nextSelection] = await Promise.all([
-      api.refreshInventory(),
-      api.listPresets(),
-      api.getSelection(nextCharacterHash),
-    ]);
-    setDashboard(nextDashboardValue);
-    setLanguage(nextDashboardValue.language);
-    setInventory(nextInventory);
-    setPresets(nextPresets.presets);
-    setSelection(nextSelection);
-    setSlotCountInput(String(nextDashboardValue.pending_virtual_slot_count || nextDashboardValue.virtual_slot_count));
-    const firstPreset = nextPresets.presets.find((preset) => preset.character_hash === nextCharacterHash);
-    if (firstPreset) {
-      setSelectedPresetIds((current) => ({ ...current, [firstPreset.character_hash]: current[firstPreset.character_hash] ?? firstPreset.id }));
-    }
-  }
+  }, [dashboard?.connection.pid, currentCharacterHash, sessionHydrated]);
 
   async function connectToProcess(pid: number, automatic: boolean): Promise<void> {
     if (connectionInFlightRef.current || dashboard) return;
@@ -272,7 +306,12 @@ function App() {
     try {
       const nextConnection = await api.connectGame(pid);
       const nextDashboard = await api.getDashboard();
-      await loadConnectedData({ ...nextDashboard, connection: nextConnection });
+      const connectedDashboard = { ...nextDashboard, connection: nextConnection };
+      setDashboard(connectedDashboard);
+      setLanguage(connectedDashboard.language);
+      setSlotCountInput(String(connectedDashboard.pending_virtual_slot_count || connectedDashboard.virtual_slot_count));
+      setSessionHydrated(false);
+      setHydrationWarning("");
       autoConnectSuppressedPidRef.current = null;
       setNotice({
         message: automatic
@@ -282,7 +321,7 @@ function App() {
       });
     } catch (error: unknown) {
       await api.disconnectGame().catch(() => undefined);
-      autoConnectSuppressedPidRef.current = pid;
+      autoConnectSuppressedPidRef.current = automatic ? null : pid;
       setConnectionError(error instanceof Error ? error.message : String(error));
     } finally {
       connectionInFlightRef.current = false;
@@ -304,6 +343,8 @@ function App() {
       setDashboard(null);
       setInventory([]);
       setSelection(Array(24).fill(0));
+      setSessionHydrated(false);
+      setHydrationWarning("");
       setNotice(null);
       setConnectionError("");
     } catch (error: unknown) {
@@ -923,6 +964,7 @@ function App() {
             <div className="slots-footer"><Info size={15} /><span>{language === "en" ? "Extension slots begin at 13 to match the game’s internal slot numbering." : "扩展槽从 13 开始编号，与游戏内部槽位编号保持一致。"}</span></div>
           </section>
         </div>
+        {hydrationWarning && <div className="notice notice-warning" role="status" aria-live="polite"><LoaderCircle size={16} className="spin" /><span>{hydrationWarning}</span></div>}
         {notice && <div className={`notice notice-${notice.kind}`} role="status" aria-live="polite">{notice.kind === "success" ? <CircleCheck size={16} /> : <CircleAlert size={16} />}<span>{notice.message}</span><IconButton label={language === "en" ? "Dismiss notice" : "关闭提示"} onClick={() => setNotice(null)}><X size={15} /></IconButton></div>}
       </main>
     );

@@ -911,7 +911,7 @@ dependencies = [
 
 [[package]]
 name = "gbfrextrasigilslotsstandalone"
-version = "0.8.4"
+version = "0.8.5"
 dependencies = [
  "serde",
  "serde_json",

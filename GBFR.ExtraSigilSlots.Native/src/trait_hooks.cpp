@@ -8,6 +8,7 @@ namespace gbfr::native
 SafetyHookInline g_get_gem_hook;
 SafetyHookMid g_trait_fetch_hook;
 SafetyHookMid g_status_owner_tick_hook;
+SafetyHookMid g_status_owner_character_loop_hook;
 SafetyHookMid g_local_context1_bind_call_hook;
 SafetyHookMid g_local_context1_bind_return_hook;
 
@@ -26,6 +27,7 @@ std::atomic_uint32_t g_active_mid_calls{0};
 thread_local uint64_t g_tls_apply_generation = 0;
 thread_local NaturalContributionFrame g_tls_natural_contribution{};
 thread_local LocalContext1Binding g_tls_local_context1_binding{};
+thread_local bool g_tls_standalone_tick_active = false;
 std::atomic_uint64_t g_natural_bind_attempts{0};
 std::atomic_uint64_t g_natural_bind_successes{0};
 std::atomic_uint64_t g_natural_bind_status_address{0};
@@ -473,6 +475,27 @@ void OnLocalContext1BindReturn(safetyhook::Context&)
    g_tls_local_context1_binding.active = false;
 }
 
+void OnStatusOwnerTick(safetyhook::Context&)
+{
+   ActiveCallGuard active_call(g_active_mid_calls);
+   if (g_shutting_down.load(std::memory_order_acquire))
+      return;
+
+   g_status_owner_thread_id.store(GetCurrentThreadId(), std::memory_order_release);
+   g_status_owner_tick_count.fetch_add(1, std::memory_order_acq_rel);
+   // Standalone has no Present tick source, so hot-apply must be pumped from
+   // the owner-tick function entry rather than the inner character loop, which
+   // can be skipped when no character iteration is available.
+   if (!g_standalone_owner_tick_enabled.load(std::memory_order_acquire) ||
+       !g_hooks_ready.load(std::memory_order_acquire) ||
+       g_tls_standalone_tick_active)
+      return;
+
+   g_tls_standalone_tick_active = true;
+   GBFR20_Tick();
+   g_tls_standalone_tick_active = false;
+}
+
 void OnStatusOwnerCharacterLoop(safetyhook::Context& context)
 {
    ActiveCallGuard active_call(g_active_mid_calls);
@@ -481,7 +504,6 @@ void OnStatusOwnerCharacterLoop(safetyhook::Context& context)
 
    g_status_owner_manager_address.store(context.rbx, std::memory_order_release);
    g_status_owner_thread_id.store(GetCurrentThreadId(), std::memory_order_release);
-   g_status_owner_tick_count.fetch_add(1, std::memory_order_acq_rel);
 
    std::array<uint32_t, 4> hashes{};
    const uint32_t count = SafeReadOwnerCharacterHashes(context.rbx, hashes);
@@ -492,8 +514,6 @@ void OnStatusOwnerCharacterLoop(safetyhook::Context& context)
       g_status_owner_character_hashes[index].store(0, std::memory_order_release);
    g_status_owner_character_count.store(count, std::memory_order_release);
    ReconcileGemProtection();
-   if (g_standalone_owner_tick_enabled.load(std::memory_order_acquire))
-      GBFR20_Tick();
 }
 
 uint64_t BuildLifecycleSignature(
@@ -593,6 +613,8 @@ void RollbackGameplayHookInstallation() noexcept
       (void)g_set_gem_protection_hook.disable();
    if (g_status_owner_tick_hook)
       (void)g_status_owner_tick_hook.disable();
+   if (g_status_owner_character_loop_hook)
+      (void)g_status_owner_character_loop_hook.disable();
    if (g_trait_fetch_hook)
       (void)g_trait_fetch_hook.disable();
    if (g_get_gem_hook)
@@ -626,6 +648,7 @@ void RollbackGameplayHookInstallation() noexcept
 
    g_set_gem_protection_hook.reset();
    g_status_owner_tick_hook.reset();
+   g_status_owner_character_loop_hook.reset();
    g_trait_fetch_hook.reset();
    g_get_gem_hook.reset();
    {
@@ -669,6 +692,8 @@ void ShutdownHooks()
       (void)g_set_gem_protection_hook.disable();
    if (g_status_owner_tick_hook)
       (void)g_status_owner_tick_hook.disable();
+   if (g_status_owner_character_loop_hook)
+      (void)g_status_owner_character_loop_hook.disable();
    if (g_trait_fetch_hook)
       (void)g_trait_fetch_hook.disable();
    if (g_get_gem_hook)
@@ -705,6 +730,7 @@ void ShutdownHooks()
    }
    g_set_gem_protection_hook.reset();
    g_status_owner_tick_hook.reset();
+   g_status_owner_character_loop_hook.reset();
    g_local_context1_bind_return_hook.reset();
    g_local_context1_bind_call_hook.reset();
    g_trait_fetch_hook.reset();
@@ -781,17 +807,38 @@ bool InstallHooks()
       return false;
    }
 
-   const uint64_t owner_hook_started = BeginStartupPhase("status-owner-hook");
+   const uint64_t owner_tick_hook_started =
+      BeginStartupPhase("status-owner-tick-hook");
    g_status_owner_tick_hook = safetyhook::create_mid(
+      reinterpret_cast<void*>(
+         g_image_base + g_game_layout.status_owner_tick_rva),
+      &OnStatusOwnerTick);
+   CompleteStartupPhase(
+      "status-owner-tick-hook",
+      owner_tick_hook_started,
+      static_cast<bool>(g_status_owner_tick_hook));
+   if (!g_status_owner_tick_hook)
+   {
+      RollbackGameplayHookInstallation();
+      SetRuntimeMessage("Failed to install the status owner-tick hook.", true);
+      return false;
+   }
+
+   const uint64_t owner_loop_hook_started =
+      BeginStartupPhase("status-owner-character-loop-hook");
+   g_status_owner_character_loop_hook = safetyhook::create_mid(
       reinterpret_cast<void*>(
          g_image_base + g_game_layout.status_owner_character_loop_rva),
       &OnStatusOwnerCharacterLoop);
    CompleteStartupPhase(
-      "status-owner-hook", owner_hook_started, static_cast<bool>(g_status_owner_tick_hook));
-   if (!g_status_owner_tick_hook)
+      "status-owner-character-loop-hook",
+      owner_loop_hook_started,
+      static_cast<bool>(g_status_owner_character_loop_hook));
+   if (!g_status_owner_character_loop_hook)
    {
       RollbackGameplayHookInstallation();
-      SetRuntimeMessage("Failed to install the status owner-thread trace hook.", true);
+      SetRuntimeMessage(
+         "Failed to install the status owner-character trace hook.", true);
       return false;
    }
 

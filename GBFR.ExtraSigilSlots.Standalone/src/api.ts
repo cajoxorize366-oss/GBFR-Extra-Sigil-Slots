@@ -44,7 +44,9 @@ interface MockState {
   connectedProcess?: GameProcess;
   language: Language;
   editAllowed: boolean;
+  connectionFailuresRemaining: number;
   inventoryRevision: number;
+  inventoryRefreshFailuresRemaining: number;
   virtualSlotCount: number;
   pendingVirtualSlotCount: number;
   selection: Map<number, number[]>;
@@ -154,7 +156,9 @@ function createMockState(): MockState {
   return {
     language: "zh-CN",
     editAllowed: true,
+    connectionFailuresRemaining: 0,
     inventoryRevision: 42,
+    inventoryRefreshFailuresRemaining: 0,
     virtualSlotCount: 8,
     pendingVirtualSlotCount: 0,
     selection,
@@ -287,6 +291,11 @@ const mockApi: StandaloneApi = {
   async connectGame(pid) {
     const process = mockProcessList().find((candidate) => candidate.pid === pid);
     if (!process) throw new Error("The selected game process is no longer available.");
+    if (mockState.connectionFailuresRemaining > 0) {
+      mockState.connectionFailuresRemaining -= 1;
+      process.agent_loaded = true;
+      throw new Error("Agent pipe is not ready yet.");
+    }
     mockState.connectedProcess = process;
     return clone(mockConnection());
   },
@@ -298,6 +307,10 @@ const mockApi: StandaloneApi = {
     return clone(mockDashboard());
   },
   async refreshInventory() {
+    if (mockState.inventoryRefreshFailuresRemaining > 0) {
+      mockState.inventoryRefreshFailuresRemaining -= 1;
+      throw new Error("Inventory is not ready yet.");
+    }
     updatePresetReferences();
     return clone(mockState.inventory);
   },
@@ -460,6 +473,12 @@ export const mockControls = {
   },
   setDetectedProcessCount(count: number): void {
     mockProcesses = createMockProcessList().slice(0, count);
+  },
+  failNextConnections(count: number): void {
+    mockState.connectionFailuresRemaining = Math.max(0, count);
+  },
+  failNextInventoryRefreshes(count: number): void {
+    mockState.inventoryRefreshFailuresRemaining = Math.max(0, count);
   },
 };
 
