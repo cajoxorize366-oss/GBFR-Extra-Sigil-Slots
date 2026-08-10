@@ -47,6 +47,8 @@ interface MockState {
   connectionFailuresRemaining: number;
   inventoryRevision: number;
   inventoryRefreshFailuresRemaining: number;
+  inventoryRefreshCount: number;
+  gameDataReady: boolean;
   virtualSlotCount: number;
   pendingVirtualSlotCount: number;
   selection: Map<number, number[]>;
@@ -159,6 +161,8 @@ function createMockState(): MockState {
     connectionFailuresRemaining: 0,
     inventoryRevision: 42,
     inventoryRefreshFailuresRemaining: 0,
+    inventoryRefreshCount: 0,
+    gameDataReady: true,
     virtualSlotCount: 8,
     pendingVirtualSlotCount: 0,
     selection,
@@ -199,7 +203,7 @@ function mockConnection(): ConnectionInfo {
     process_name: process.executable_name,
     injected: true,
     protocol_version: 1,
-    native_abi_version: 13,
+    native_abi_version: 14,
   };
 }
 
@@ -218,6 +222,7 @@ function mockDashboard(): Dashboard {
     language: mockState.language,
     inventory_revision: mockState.inventoryRevision,
     inventory_dirty: false,
+    game_data_ready: mockState.gameDataReady,
     virtual_slot_count: mockState.virtualSlotCount,
     virtual_slot_capacity: 24,
     pending_virtual_slot_count: mockState.pendingVirtualSlotCount,
@@ -307,6 +312,7 @@ const mockApi: StandaloneApi = {
     return clone(mockDashboard());
   },
   async refreshInventory() {
+    mockState.inventoryRefreshCount += 1;
     if (mockState.inventoryRefreshFailuresRemaining > 0) {
       mockState.inventoryRefreshFailuresRemaining -= 1;
       throw new Error("Inventory is not ready yet.");
@@ -479,6 +485,12 @@ export const mockControls = {
   },
   failNextInventoryRefreshes(count: number): void {
     mockState.inventoryRefreshFailuresRemaining = Math.max(0, count);
+  },
+  setGameDataReady(gameDataReady: boolean): void {
+    mockState.gameDataReady = gameDataReady;
+  },
+  getInventoryRefreshCount(): number {
+    return mockState.inventoryRefreshCount;
   },
 };
 

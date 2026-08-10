@@ -51,16 +51,32 @@ describe("Standalone workbench", () => {
     expect(screen.getByText("已自动检测、注入并连接游戏。")).toBeInTheDocument();
   });
 
-  it("keeps the automatic connection while initial game data hydration retries", async () => {
+  it("hydrates once when the native game-data-ready flag changes", async () => {
     mockControls.setDetectedProcessCount(1);
-    mockControls.failNextInventoryRefreshes(2);
+    mockControls.setGameDataReady(false);
     render(<App />);
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "槽位选择" })).toBeInTheDocument());
     expect(screen.getByText("已连接")).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText("已连接，正在等待游戏数据就绪并自动重试。", { exact: false })).toBeInTheDocument());
+    expect(screen.getByText("等待游戏数据")).toBeInTheDocument();
+    await new Promise((resolve) => window.setTimeout(resolve, 1_100));
+    expect(mockControls.getInventoryRefreshCount()).toBe(0);
+    expect(screen.queryByText("自动重试", { exact: false })).not.toBeInTheDocument();
+
+    mockControls.setGameDataReady(true);
     await waitFor(() => expect(screen.getByText("已扫描 20 个因子")).toBeInTheDocument(), { timeout: 3_000 });
-    expect(screen.queryByText("已连接，正在等待游戏数据就绪并自动重试。", { exact: false })).not.toBeInTheDocument();
+    expect(mockControls.getInventoryRefreshCount()).toBe(1);
+  });
+
+  it("does not loop when the one-shot hydration read fails", async () => {
+    mockControls.setDetectedProcessCount(1);
+    mockControls.failNextInventoryRefreshes(1);
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText("首次读取失败", { exact: false })).toBeInTheDocument());
+    await new Promise((resolve) => window.setTimeout(resolve, 1_100));
+    expect(mockControls.getInventoryRefreshCount()).toBe(1);
+    expect(screen.queryByText("自动重试", { exact: false })).not.toBeInTheDocument();
   });
 
   it("keeps an explicitly disconnected single process disconnected", async () => {

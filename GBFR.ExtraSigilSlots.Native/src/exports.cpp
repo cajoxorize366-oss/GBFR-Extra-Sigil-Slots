@@ -106,6 +106,7 @@ int32_t GBFR20_CALL GBFR20_GetState(GBFR20_RuntimeState* state, uint32_t state_s
       g_last_authorized_status_address.load(std::memory_order_acquire);
    snapshot.inventory_revision = g_inventory_revision.load(std::memory_order_acquire);
    snapshot.inventory_dirty = g_inventory_dirty.load(std::memory_order_acquire) ? 1 : 0;
+   snapshot.game_data_ready = IsGameDataReady() ? 1 : 0;
    snapshot.edit_allowed = SafeCanEditCharacter(snapshot.effective_character_hash) ? 1 : 0;
    SafeReadUiModes(snapshot.ui_mode, snapshot.source_mode);
    snapshot.edit_session_state = g_edit_session_state.load(std::memory_order_acquire);

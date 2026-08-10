@@ -2,7 +2,7 @@ use serde::Serialize;
 use std::io::{Read, Write};
 
 pub const PROTOCOL_VERSION: u16 = 1;
-pub const NATIVE_ABI_VERSION: u32 = 13;
+pub const NATIVE_ABI_VERSION: u32 = 14;
 pub const VIRTUAL_SLOT_CAPACITY: usize = 24;
 pub const PRESET_CHARACTER_CAPACITY: usize = 32;
 pub const MAX_PAYLOAD_SIZE: usize = 8 * 1024 * 1024;
@@ -41,6 +41,7 @@ pub struct NativeState {
     pub language: i32,
     pub inventory_revision: u64,
     pub inventory_dirty: bool,
+    pub game_data_ready: bool,
     pub edit_allowed: bool,
     pub virtual_slot_count: u32,
     pub virtual_slot_capacity: u32,
@@ -129,7 +130,7 @@ impl<T: Read + Write> ProtocolClient<T> {
 
     pub fn get_state(&mut self) -> Result<StateResponse, String> {
         let payload = self.request(COMMAND_GET_STATE, &[])?;
-        if payload.len() < 284 {
+        if payload.len() < 288 {
             return self.fail(format!(
                 "GetState response is too short: {} bytes.",
                 payload.len()
@@ -138,7 +139,7 @@ impl<T: Read + Write> ProtocolClient<T> {
         let mut reader = Reader::new(&payload);
         let abi_version = reader.u32()?;
         let struct_size = reader.u32()?;
-        if abi_version != NATIVE_ABI_VERSION || struct_size != 276 {
+        if abi_version != NATIVE_ABI_VERSION || struct_size != 280 {
             return self.fail(format!(
                 "Unsupported native state ABI {abi_version} with size {struct_size}."
             ));
@@ -154,6 +155,7 @@ impl<T: Read + Write> ProtocolClient<T> {
         reader.skip(16)?;
         let inventory_revision = reader.u64()?;
         let inventory_dirty = reader.i32()? != 0;
+        let game_data_ready = reader.i32()? != 0;
         let edit_allowed = reader.i32()? != 0;
         reader.skip(112)?;
         let virtual_slot_count = reader.u32()?;
@@ -176,6 +178,7 @@ impl<T: Read + Write> ProtocolClient<T> {
                 language,
                 inventory_revision,
                 inventory_dirty,
+                game_data_ready,
                 edit_allowed,
                 virtual_slot_count,
                 virtual_slot_capacity,
@@ -506,9 +509,9 @@ mod tests {
     #[test]
     fn state_response_matches_the_packed_native_layout() {
         let message = b"hooks ready";
-        let mut payload = vec![0_u8; 284];
+        let mut payload = vec![0_u8; 288];
         payload[0..4].copy_from_slice(&NATIVE_ABI_VERSION.to_le_bytes());
-        payload[4..8].copy_from_slice(&276_u32.to_le_bytes());
+        payload[4..8].copy_from_slice(&280_u32.to_le_bytes());
         payload[8..12].copy_from_slice(&1_i32.to_le_bytes());
         payload[12..16].copy_from_slice(&1_i32.to_le_bytes());
         payload[20..24].copy_from_slice(&1_i32.to_le_bytes());
@@ -518,10 +521,11 @@ mod tests {
         payload[140..148].copy_from_slice(&0x0102_0304_0506_0708_u64.to_le_bytes());
         payload[148..152].copy_from_slice(&1_i32.to_le_bytes());
         payload[152..156].copy_from_slice(&1_i32.to_le_bytes());
-        payload[268..272].copy_from_slice(&8_u32.to_le_bytes());
-        payload[272..276].copy_from_slice(&24_u32.to_le_bytes());
-        payload[276..280].copy_from_slice(&12_i32.to_le_bytes());
-        payload[280..284].copy_from_slice(&(message.len() as u32).to_le_bytes());
+        payload[156..160].copy_from_slice(&1_i32.to_le_bytes());
+        payload[272..276].copy_from_slice(&8_u32.to_le_bytes());
+        payload[276..280].copy_from_slice(&24_u32.to_le_bytes());
+        payload[280..284].copy_from_slice(&12_i32.to_le_bytes());
+        payload[284..288].copy_from_slice(&(message.len() as u32).to_le_bytes());
         payload.extend_from_slice(message);
 
         let mut response = encode_header(&FrameHeader {
@@ -546,6 +550,7 @@ mod tests {
         assert_eq!(snapshot.state.language, 1);
         assert_eq!(snapshot.state.inventory_revision, 0x0102_0304_0506_0708);
         assert!(snapshot.state.inventory_dirty);
+        assert!(snapshot.state.game_data_ready);
         assert!(snapshot.state.edit_allowed);
         assert_eq!(snapshot.state.virtual_slot_count, 8);
         assert_eq!(snapshot.state.virtual_slot_capacity, 24);

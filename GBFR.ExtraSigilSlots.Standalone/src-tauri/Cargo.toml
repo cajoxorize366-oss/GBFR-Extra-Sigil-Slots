@@ -1,6 +1,6 @@
 [package]
 name = "gbfrextrasigilslotsstandalone"
-version = "0.8.6"
+version = "0.8.7"
 description = "Standalone controller for GBFR Extra Sigil Slots"
 authors = ["cajoxorize366"]
 edition = "2021"

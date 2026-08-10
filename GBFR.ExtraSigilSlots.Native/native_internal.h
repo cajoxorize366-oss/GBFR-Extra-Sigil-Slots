@@ -467,6 +467,7 @@ void ProcessPendingHotApply();
 bool SetSelection(uint32_t character_hash, int virtual_slot, uint32_t inventory_slot_id);
 bool ApplyPresetSelections(const GBFR20_PresetCharacterSelection* selections, uint32_t selection_count, GBFR20_PresetSlotResult* slot_results, uint32_t slot_result_capacity, uint32_t* slot_result_count);
 uintptr_t ResolveGemAddress(uint32_t slot_id);
+bool IsGameDataReady() noexcept;
 bool RefreshInventorySnapshot();
 void ScheduleGemProtectionReconcile() noexcept;
 void ReconcileGemProtection();

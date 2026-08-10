@@ -31,6 +31,7 @@ export interface Dashboard {
   language: Language;
   inventory_revision: number;
   inventory_dirty: boolean;
+  game_data_ready: boolean;
   virtual_slot_count: number;
   virtual_slot_capacity: number;
   pending_virtual_slot_count: number;

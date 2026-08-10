@@ -7,7 +7,7 @@ const ushort ProtocolVersion = 1;
 const int BootstrapSize = 2064;
 const int FrameHeaderSize = 20;
 const int HelloResponseSize = 16;
-const int StateResponseSize = 284;
+const int StateResponseSize = 288;
 const int DataDirectoryOffset = 16;
 const int DataDirectoryCapacity = 1024;
 

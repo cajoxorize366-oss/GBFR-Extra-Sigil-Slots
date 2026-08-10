@@ -60,6 +60,29 @@ bool RebuildInventoryIndexLocked(uintptr_t system_data)
 }
 }
 
+bool IsGameDataReady() noexcept
+{
+   if (!g_layout_ready.load(std::memory_order_acquire) ||
+       !g_hooks_ready.load(std::memory_order_acquire) || g_image_base == 0)
+      return false;
+
+   uintptr_t system_data = 0;
+   if (!SafeReadPointer(
+          g_image_base + g_game_layout.system_data_global_rva, system_data) ||
+       system_data == 0)
+      return false;
+
+   uintptr_t inventory_base = 0;
+   if (!TryGetInventoryBase(system_data, inventory_base))
+      return false;
+
+   GemData first{};
+   GemData last{};
+   const uintptr_t last_address = inventory_base +
+      static_cast<uintptr_t>(kMainGemCapacity - 1) * sizeof(GemData);
+   return SafeReadGem(inventory_base, first) && SafeReadGem(last_address, last);
+}
+
 uintptr_t ResolveGemAddress(uint32_t slot_id)
 {
    if (!g_layout_ready.load(std::memory_order_acquire) ||

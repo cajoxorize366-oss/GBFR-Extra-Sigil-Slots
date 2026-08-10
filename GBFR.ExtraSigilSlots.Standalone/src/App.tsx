@@ -116,6 +116,28 @@ function formatHash(hash: number): string {
   return `0x${hash.toString(16).padStart(8, "0").toUpperCase()}`;
 }
 
+function dashboardsMatch(left: Dashboard, right: Dashboard): boolean {
+  return left.connection.pid === right.connection.pid
+    && left.connection.process_name === right.connection.process_name
+    && left.connection.injected === right.connection.injected
+    && left.connection.protocol_version === right.connection.protocol_version
+    && left.connection.native_abi_version === right.connection.native_abi_version
+    && left.initialized === right.initialized
+    && left.hooks_ready === right.hooks_ready
+    && left.runtime_message === right.runtime_message
+    && left.runtime_message_is_error === right.runtime_message_is_error
+    && left.effective_character_hash === right.effective_character_hash
+    && left.ui_selected_character_hash === right.ui_selected_character_hash
+    && left.edit_allowed === right.edit_allowed
+    && left.language === right.language
+    && left.inventory_revision === right.inventory_revision
+    && left.inventory_dirty === right.inventory_dirty
+    && left.game_data_ready === right.game_data_ready
+    && left.virtual_slot_count === right.virtual_slot_count
+    && left.virtual_slot_capacity === right.virtual_slot_capacity
+    && left.pending_virtual_slot_count === right.pending_virtual_slot_count;
+}
+
 function App() {
   const [processes, setProcesses] = useState<GameProcess[]>([]);
   const [selectedPid, setSelectedPid] = useState<number | null>(null);
@@ -144,6 +166,8 @@ function App() {
   const connectionInFlightRef = useRef(false);
   const hydrationInFlightRef = useRef(false);
   const autoConnectSuppressedPidRef = useRef<number | null>(null);
+  const hydrationAttemptRef = useRef("");
+  const inventoryRefreshAttemptRef = useRef("");
 
   const isConnected = dashboard !== null;
   const currentCharacterHash = dashboard?.ui_selected_character_hash || dashboard?.effective_character_hash || defaultCharacterHash;
@@ -209,16 +233,18 @@ function App() {
 
   useEffect(() => {
     if (!dashboard || sessionHydrated) return;
+    if (!dashboard.game_data_ready) {
+      hydrationAttemptRef.current = "";
+      setHydrationWarning("");
+      return;
+    }
+
+    const attemptKey = `${dashboard.connection.pid}:${dashboard.inventory_revision}`;
+    if (hydrationAttemptRef.current === attemptKey || hydrationInFlightRef.current) return;
+    hydrationAttemptRef.current = attemptKey;
     let active = true;
-    let retryTimer: number | undefined;
 
     const hydrate = async (): Promise<void> => {
-      if (!active) return;
-      if (hydrationInFlightRef.current) {
-        retryTimer = window.setTimeout(() => void hydrate(), 100);
-        return;
-      }
-
       hydrationInFlightRef.current = true;
       try {
         const nextCharacterHash = dashboard.ui_selected_character_hash || dashboard.effective_character_hash || defaultCharacterHash;
@@ -241,9 +267,8 @@ function App() {
         if (!active) return;
         const detail = error instanceof Error ? error.message : String(error);
         setHydrationWarning(language === "en"
-          ? `Connected. Waiting for the game data to become ready; retrying automatically. ${detail}`
-          : `已连接，正在等待游戏数据就绪并自动重试。${detail}`);
-        retryTimer = window.setTimeout(() => void hydrate(), 500);
+          ? `The ready signal was received, but the initial game-data read failed. Use Refresh to try once more. ${detail}`
+          : `已收到游戏数据就绪标志，但首次读取失败。请点击“刷新”再尝试一次。${detail}`);
       } finally {
         hydrationInFlightRef.current = false;
       }
@@ -252,9 +277,8 @@ function App() {
     void hydrate();
     return () => {
       active = false;
-      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
     };
-  }, [dashboard?.connection.pid, sessionHydrated]);
+  }, [dashboard?.connection.pid, dashboard?.effective_character_hash, dashboard?.game_data_ready, dashboard?.inventory_revision, dashboard?.ui_selected_character_hash, language, sessionHydrated]);
 
   useEffect(() => {
     if (!dashboard) return;
@@ -269,12 +293,19 @@ function App() {
         const selectionPromise = nextCharacterHash !== currentCharacterHash
           ? api.getSelection(nextCharacterHash)
           : Promise.resolve<number[] | null>(null);
-        const inventoryPromise = sessionHydrated && nextDashboard.inventory_dirty
-          ? api.refreshInventory()
-          : Promise.resolve<InventoryItem[] | null>(null);
+        let inventoryPromise: Promise<InventoryItem[] | null> = Promise.resolve(null);
+        if (!nextDashboard.game_data_ready || !nextDashboard.inventory_dirty) {
+          inventoryRefreshAttemptRef.current = "";
+        } else if (sessionHydrated) {
+          const refreshKey = `${nextDashboard.connection.pid}:${nextDashboard.inventory_revision}`;
+          if (inventoryRefreshAttemptRef.current !== refreshKey) {
+            inventoryRefreshAttemptRef.current = refreshKey;
+            inventoryPromise = api.refreshInventory();
+          }
+        }
         const [nextSelectionResult, nextInventoryResult] = await Promise.allSettled([selectionPromise, inventoryPromise]);
         if (!active) return;
-        setDashboard(nextDashboard);
+        setDashboard((current) => current && dashboardsMatch(current, nextDashboard) ? current : nextDashboard);
         setLanguage(nextDashboard.language);
         if (nextSelectionResult.status === "fulfilled" && nextSelectionResult.value) setSelection(nextSelectionResult.value);
         if (nextInventoryResult.status === "fulfilled" && nextInventoryResult.value) setInventory(nextInventoryResult.value);
@@ -312,6 +343,8 @@ function App() {
       setSlotCountInput(String(connectedDashboard.pending_virtual_slot_count || connectedDashboard.virtual_slot_count));
       setSessionHydrated(false);
       setHydrationWarning("");
+      hydrationAttemptRef.current = "";
+      inventoryRefreshAttemptRef.current = "";
       autoConnectSuppressedPidRef.current = null;
       setNotice({
         message: automatic
@@ -345,6 +378,8 @@ function App() {
       setSelection(Array(24).fill(0));
       setSessionHydrated(false);
       setHydrationWarning("");
+      hydrationAttemptRef.current = "";
+      inventoryRefreshAttemptRef.current = "";
       setNotice(null);
       setConnectionError("");
     } catch (error: unknown) {
@@ -367,9 +402,24 @@ function App() {
   }
 
   async function handleRefreshInventory(): Promise<void> {
+    if (!dashboard) return;
     setLoading("inventory");
     try {
-      setInventory(await api.refreshInventory());
+      if (!sessionHydrated) {
+        const nextCharacterHash = dashboard.ui_selected_character_hash || dashboard.effective_character_hash || defaultCharacterHash;
+        const [nextInventory, nextPresets, nextSelection] = await Promise.all([
+          api.refreshInventory(),
+          api.listPresets(),
+          api.getSelection(nextCharacterHash),
+        ]);
+        setInventory(nextInventory);
+        setPresets(nextPresets.presets);
+        setSelection(nextSelection);
+        setSessionHydrated(true);
+        setHydrationWarning("");
+      } else {
+        setInventory(await api.refreshInventory());
+      }
       setNotice({ message: language === "en" ? "Inventory refreshed." : "库存已刷新。", kind: "success" });
     } catch (error: unknown) {
       setNotice({ message: error instanceof Error ? error.message : String(error), kind: "error" });
@@ -909,14 +959,26 @@ function App() {
   function renderConnected(): ReactNode {
     if (!dashboard) return null;
     const pendingCount = dashboard.pending_virtual_slot_count;
-    const statusTone = editAllowed ? "green" : "amber";
+    const statusTone = !dashboard.game_data_ready || !sessionHydrated ? "neutral" : editAllowed ? "green" : "amber";
+    const statusLabel = !dashboard.game_data_ready
+      ? language === "en" ? "Waiting for game" : "等待游戏"
+      : !sessionHydrated
+        ? language === "en" ? "Reading data" : "读取数据"
+        : editAllowed
+          ? language === "en" ? "Editable" : "可修改"
+          : language === "en" ? "Read-only" : "只读";
+    const scanLabel = sessionHydrated
+      ? language === "en" ? `${inventory.length} sigils scanned` : `已扫描 ${inventory.length} 个因子`
+      : dashboard.game_data_ready
+        ? language === "en" ? "Reading game data" : "正在读取游戏数据"
+        : language === "en" ? "Waiting for game data" : "等待游戏数据";
     return (
       <main className="workbench">
         <section className="workspace-toolbar">
           <div className="toolbar-character"><span className="eyebrow">{language === "en" ? "CURRENT CHARACTER" : "当前角色"}</span><strong>{characterForHash(currentCharacterHash)}</strong><span className="hash-label">{formatHash(currentCharacterHash)}</span></div>
           <div className="toolbar-actions">
-            <span className="scan-count">{language === "en" ? `${inventory.length} sigils scanned` : `已扫描 ${inventory.length} 个因子`}</span>
-            <button type="button" className="button button-secondary button-compact" onClick={() => void handleRefreshInventory()} disabled={loading === "inventory"}><RefreshCw size={15} className={loading === "inventory" ? "spin" : ""} />{language === "en" ? "Refresh" : "刷新"}</button>
+            <span className="scan-count">{scanLabel}</span>
+            <button type="button" className="button button-secondary button-compact" onClick={() => void handleRefreshInventory()} disabled={loading === "inventory" || !dashboard.game_data_ready}><RefreshCw size={15} className={loading === "inventory" ? "spin" : ""} />{language === "en" ? "Refresh" : "刷新"}</button>
             <button type="button" className="button button-ghost button-compact" onClick={() => void handleDisconnect()} disabled={loading === "disconnect"}>{language === "en" ? "Disconnect" : "断开"}</button>
           </div>
         </section>
@@ -932,7 +994,7 @@ function App() {
             </section>
 
             <section className="work-section state-section">
-              <div className="section-title"><span>{language === "en" ? "Session state" : "当前状态"}</span><StatusBadge tone={statusTone}>{editAllowed ? (language === "en" ? "Editable" : "可修改") : (language === "en" ? "Read-only" : "只读")}</StatusBadge></div>
+              <div className="section-title"><span>{language === "en" ? "Session state" : "当前状态"}</span><StatusBadge tone={statusTone}>{statusLabel}</StatusBadge></div>
               <p className="runtime-message">{dashboard.runtime_message}</p>
               {!isTauriRuntime() && <div className="state-switch" role="group" aria-label={language === "en" ? "Session edit state" : "会话编辑状态"}><button type="button" className={editAllowed ? "state-active" : ""} onClick={() => void handleSetEditAllowed(true)}>Editable</button><button type="button" className={!editAllowed ? "state-active" : ""} onClick={() => void handleSetEditAllowed(false)}>Read-only</button></div>}
               <div className="warning-line"><CircleAlert size={15} /><span>{language === "en" ? "The game does not support hot-updating sigils during battle." : "游戏不支持战斗状态热更新因子。"}</span></div>
@@ -964,7 +1026,7 @@ function App() {
             <div className="slots-footer"><Info size={15} /><span>{language === "en" ? "Extension slots begin at 13 to match the game’s internal slot numbering." : "扩展槽从 13 开始编号，与游戏内部槽位编号保持一致。"}</span></div>
           </section>
         </div>
-        {hydrationWarning && <div className="notice notice-warning" role="status" aria-live="polite"><LoaderCircle size={16} className="spin" /><span>{hydrationWarning}</span></div>}
+        {hydrationWarning && <div className="notice notice-warning" role="status" aria-live="polite"><CircleAlert size={16} /><span>{hydrationWarning}</span><IconButton label={language === "en" ? "Dismiss notice" : "关闭提示"} onClick={() => setHydrationWarning("")}><X size={15} /></IconButton></div>}
         {notice && <div className={`notice notice-${notice.kind}`} role="status" aria-live="polite">{notice.kind === "success" ? <CircleCheck size={16} /> : <CircleAlert size={16} />}<span>{notice.message}</span><IconButton label={language === "en" ? "Dismiss notice" : "关闭提示"} onClick={() => setNotice(null)}><X size={15} /></IconButton></div>}
       </main>
     );

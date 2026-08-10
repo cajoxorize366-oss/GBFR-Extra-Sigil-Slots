@@ -10,7 +10,7 @@
 
 #define GBFR20_CALL __cdecl
 
-constexpr uint32_t GBFR20_ABI_VERSION = 13;
+constexpr uint32_t GBFR20_ABI_VERSION = 14;
 constexpr uint32_t GBFR20_VIRTUAL_SLOT_CAPACITY = 24;
 constexpr uint32_t GBFR20_OWNER_CHARACTER_CAPACITY = 4;
 constexpr uint32_t GBFR20_PRESET_CHARACTER_CAPACITY = 32;
@@ -102,6 +102,7 @@ struct GBFR20_RuntimeState
    uint64_t authorized_status_address;
    uint64_t inventory_revision;
    int32_t inventory_dirty;
+   int32_t game_data_ready;
    int32_t edit_allowed;
    int32_t ui_mode;
    int32_t source_mode;
@@ -133,7 +134,7 @@ struct GBFR20_RuntimeState
 static_assert(sizeof(GBFR20_GemData) == 0x24);
 static_assert(sizeof(GBFR20_PresetCharacterSelection) == 100);
 static_assert(sizeof(GBFR20_PresetSlotResult) == 20);
-static_assert(sizeof(GBFR20_RuntimeState) == 276);
+static_assert(sizeof(GBFR20_RuntimeState) == 280);
 
 GBFR20_API uint32_t GBFR20_CALL GBFR20_GetAbiVersion();
 GBFR20_API void GBFR20_CALL GBFR20_SetLogCallback(GBFR20_LogCallback callback);

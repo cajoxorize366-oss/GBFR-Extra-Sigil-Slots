@@ -74,5 +74,5 @@ struct GBFR20_StandaloneStateResponse
 
 static_assert(sizeof(GBFR20_StandaloneFrameHeader) == 20);
 static_assert(sizeof(GBFR20_StandaloneHelloResponse) == 16);
-static_assert(sizeof(GBFR20_StandaloneStateResponse) == 284);
+static_assert(sizeof(GBFR20_StandaloneStateResponse) == 288);
 static_assert(sizeof(GBFR20_StandaloneBootstrapConfig) == 2064);
