@@ -492,6 +492,8 @@ void OnStatusOwnerCharacterLoop(safetyhook::Context& context)
       g_status_owner_character_hashes[index].store(0, std::memory_order_release);
    g_status_owner_character_count.store(count, std::memory_order_release);
    ReconcileGemProtection();
+   if (g_standalone_owner_tick_enabled.load(std::memory_order_acquire))
+      GBFR20_Tick();
 }
 
 uint64_t BuildLifecycleSignature(

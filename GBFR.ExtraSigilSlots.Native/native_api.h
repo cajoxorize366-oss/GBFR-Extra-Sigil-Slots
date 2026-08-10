@@ -193,3 +193,4 @@ GBFR20_API uint32_t GBFR20_CALL GBFR20_GetInputCaptureDevices();
 GBFR20_API int32_t GBFR20_CALL GBFR20_GetInputCaptureActive();
 GBFR20_API int32_t GBFR20_CALL GBFR20_IsInventoryDirty();
 GBFR20_API int32_t GBFR20_CALL GBFR20_CanEditCharacter(uint32_t character_hash);
+GBFR20_API uint32_t GBFR20_CALL GBFR20_StandaloneBootstrap(const void* configuration);

@@ -36,6 +36,9 @@ Invoke-Harness `
     -Project (Join-Path $PSScriptRoot 'PresentBridgeHarness\PresentBridgeHarness.csproj') `
     -OutputDirectory $nativeOutput
 Invoke-Harness `
+    -Project (Join-Path $PSScriptRoot 'StandaloneAgentHarness\StandaloneAgentHarness.csproj') `
+    -OutputDirectory $nativeOutput
+Invoke-Harness `
     -Project (Join-Path $PSScriptRoot 'PresetStoreHarness\PresetStoreHarness.csproj') `
     -OutputDirectory $managedOutput
 Invoke-Harness `

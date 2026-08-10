@@ -4,6 +4,12 @@ Reloaded-II configurable extra-sigil-slot mod for Granblue Fantasy: Relink ER 2.
 
 The repository contains a C++ native hook and a C# Reloaded-II loader, but they are packaged as one Reloaded-II mod.
 
+The `standalone-tauri` branch also contains an independent Windows x64 controller
+under `GBFR.ExtraSigilSlots.Standalone`. It uses Rust + Tauri, discovers the
+running game process, injects a small Native Agent, and keeps all UI outside the
+game. Build it with `build-standalone.ps1`; it cannot share one game process with
+the Reloaded-II edition.
+
 Reloaded-II 1.30.3 or newer is recommended. The native DLL is loaded by the managed Reloaded-II mod and is not a standalone ASI plugin. To launch through Steam with ASI injection, use Reloaded-II's `Edit Application -> Advanced Tools & Options -> Deploy ASI Loader`, then launch the normal game executable. Re-deploy the ASI Loader after moving or updating Reloaded-II, and do not rename `GBFR.ExtraSigilSlots.Native.dll` to `.asi`.
 
 The compact selector opens with `F8` by default; its hotkey can be changed in Reloaded-II without adding a hotkey editor to the in-game ImGui menu. It supports Simplified Chinese and English (including Chinese IME input), displays the current character by name, and reports the complete valid physical-sigil scan count separately from the filtered picker match count. Version 0.8.3 supports ER 2.0.2 through 2.0.4 by using one-shot semantic layout resolution while retaining recoverable Overlay Broker handoff, 1–24 configurable virtual slots, per-character named presets and preset transfer, usage filters, body-slot conflict reporting, and protected virtual-slot sigils. Input release is coordinated through the native effective-device mask, and a sleeping frontend no longer queues Win32 input into ImGui; the first wake frame resets stale backend mouse state and cursor position before the selector becomes interactive.
@@ -51,4 +57,5 @@ If first launch appears to hang, collect `%APPDATA%\Reloaded-Mod-Loader-II\Logs`
 ## Development
 
 - [Native architecture and refactor plan](docs/native-architecture.md)
+- [Standalone Tauri architecture](docs/standalone-tauri-architecture.zh-CN.md)
 - [Smoke-test harnesses](tests/README.md)

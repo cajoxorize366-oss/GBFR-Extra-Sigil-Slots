@@ -1,0 +1,45 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "GBFR Extra Sigil Slots Standalone",
+  "version": "0.8.3",
+  "identifier": "io.github.cajoxorize366.gbfr-extra-sigil-slots-standalone",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "GBFR Extra Sigil Slots Standalone",
+        "width": 1080,
+        "height": 760,
+        "minWidth": 760,
+        "minHeight": 620,
+        "center": true,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "resources": [
+      "resources/agent/GBFR.ExtraSigilSlots.Native.dll",
+      "resources/agent/GBFR-ExtraSigilSlots.compatibility.tsv",
+      "resources/agent/GBFR-ExtraSigilSlots.names.en.tsv",
+      "resources/agent/GBFR-ExtraSigilSlots.names.zh-CN.tsv"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

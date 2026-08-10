@@ -1,6 +1,7 @@
 #include "../native_internal.h"
 
 #include <cctype>
+#include <fstream>
 #include <iomanip>
 #include <sstream>
 
@@ -9,8 +10,10 @@ namespace gbfr::native
 HMODULE g_module = nullptr;
 uintptr_t g_image_base = 0;
 std::filesystem::path g_module_directory;
+std::filesystem::path g_data_directory;
 std::filesystem::path g_config_path;
 std::filesystem::path g_compatibility_path;
+std::mutex g_directory_mutex;
 
 std::once_flag g_initialize_once;
 std::atomic_bool g_initialized{false};
@@ -34,6 +37,26 @@ std::atomic_uint32_t g_lifecycle_signature_attempts{0};
 std::atomic_uint64_t g_lifecycle_rebind_not_before_ms{0};
 std::atomic_uint32_t g_overlay_thread_id{0};
 std::atomic_uint64_t g_overlay_frame_count{0};
+std::atomic_bool g_standalone_owner_tick_enabled{false};
+std::mutex g_standalone_log_mutex;
+
+bool ConfigureStandaloneDataDirectory(const std::filesystem::path& directory)
+{
+   if (directory.empty() || !directory.is_absolute() ||
+       g_initialized.load(std::memory_order_acquire))
+      return false;
+
+   std::error_code error;
+   std::filesystem::create_directories(directory, error);
+   if (error)
+      return false;
+
+   std::scoped_lock lock(g_directory_mutex);
+   if (!g_data_directory.empty() && g_data_directory != directory)
+      return false;
+   g_data_directory = directory;
+   return true;
+}
 
 int GetVirtualSlotCount() noexcept
 {
@@ -52,6 +75,28 @@ void Log(const std::string& message)
 {
    const std::string line = "[GBFR ExtraSigilSlots Native] " + message + "\n";
    OutputDebugStringA(line.c_str());
+   if (g_standalone_owner_tick_enabled.load(std::memory_order_acquire))
+   {
+      try
+      {
+         std::filesystem::path log_path;
+         {
+            std::scoped_lock directory_lock(g_directory_mutex);
+            if (!g_data_directory.empty())
+               log_path = g_data_directory / L"GBFR-ExtraSigilSlots.Standalone.Native.log";
+         }
+         if (!log_path.empty())
+         {
+            std::scoped_lock log_lock(g_standalone_log_mutex);
+            std::ofstream stream(log_path, std::ios::binary | std::ios::app);
+            stream.write(line.data(), static_cast<std::streamsize>(line.size()));
+         }
+      }
+      catch (...)
+      {
+         // Diagnostics must never affect hooks or IPC availability.
+      }
+   }
    if (const GBFR20_LogCallback callback = g_log_callback.load(std::memory_order_acquire);
        callback != nullptr)
    {

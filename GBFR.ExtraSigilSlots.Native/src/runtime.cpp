@@ -24,7 +24,12 @@ void Initialize()
    }
 
    g_module_directory = std::filesystem::path(module_path.data()).parent_path();
-   g_config_path = g_module_directory / L"GBFR-ExtraSigilSlotsNumConfig.ini";
+   {
+      std::scoped_lock lock(g_directory_mutex);
+      if (g_data_directory.empty())
+         g_data_directory = g_module_directory;
+      g_config_path = g_data_directory / L"GBFR-ExtraSigilSlotsNumConfig.ini";
+   }
    g_compatibility_path =
       g_module_directory / L"GBFR-ExtraSigilSlots.compatibility.tsv";
 
@@ -76,7 +81,7 @@ void Initialize()
    {
       Log(
          "Game-local USER32 and DirectInput8 hooks were intentionally skipped; "
-         "the shared Overlay Hub owns keyboard and mouse interception.");
+         "the active external frontend does not require game input interception.");
    }
    else if (!input_hooks_ready)
    {

@@ -100,6 +100,7 @@
     <ClCompile Include="src\runtime_state.cpp" />
     <ClCompile Include="src\safe_game_access.cpp" />
     <ClCompile Include="src\selection_store.cpp" />
+    <ClCompile Include="src\standalone_agent.cpp" />
     <ClCompile Include="src\trait_hooks.cpp" />
     <ClCompile Include="third_party\safetyhook.cpp" />
     <ClCompile Include="third_party\Zydis.c">
@@ -111,6 +112,7 @@
   <ItemGroup>
     <ClInclude Include="native_api.h" />
     <ClInclude Include="native_internal.h" />
+    <ClInclude Include="standalone_protocol.h" />
     <ClInclude Include="third_party\safetyhook.hpp" />
     <ClInclude Include="third_party\Zydis.h" />
   </ItemGroup>

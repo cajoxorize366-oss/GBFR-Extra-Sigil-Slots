@@ -618,7 +618,8 @@ std::array<uint32_t, kVirtualSlotCapacity> ParseSlots(std::wstring_view text)
 
 std::filesystem::path PendingSlotCountPath()
 {
-   return g_module_directory / kPendingSlotCountFileName;
+   std::scoped_lock lock(g_directory_mutex);
+   return g_data_directory / kPendingSlotCountFileName;
 }
 
 enum class PendingSlotCountState

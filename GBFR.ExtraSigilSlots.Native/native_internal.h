@@ -251,8 +251,10 @@ bool MatchesBytes(uintptr_t address, const std::array<uint8_t, Size>& expected) 
 extern HMODULE g_module;
 extern uintptr_t g_image_base;
 extern std::filesystem::path g_module_directory;
+extern std::filesystem::path g_data_directory;
 extern std::filesystem::path g_config_path;
 extern std::filesystem::path g_compatibility_path;
+extern std::mutex g_directory_mutex;
 extern std::once_flag g_initialize_once;
 extern std::atomic_bool g_initialized;
 extern std::atomic_bool g_hooks_ready;
@@ -305,6 +307,7 @@ extern std::unordered_map<uintptr_t, LocalContext1Binding> g_local_context1_bind
 extern std::atomic_uint64_t g_local_context1_binding_generation;
 extern std::atomic_uint32_t g_overlay_thread_id;
 extern std::atomic_uint64_t g_overlay_frame_count;
+extern std::atomic_bool g_standalone_owner_tick_enabled;
 extern std::atomic_uint64_t g_inventory_revision;
 extern std::atomic_bool g_inventory_dirty;
 
@@ -403,6 +406,7 @@ std::string GetRuntimeMessage(bool& is_error);
 std::string WideToUtf8(std::wstring_view text);
 std::string ToUpperHex(uint32_t value);
 std::string ToLowerAscii(std::string value);
+bool ConfigureStandaloneDataDirectory(const std::filesystem::path& directory);
 
 bool SafeReadPointer(uintptr_t address, uintptr_t& value) noexcept;
 bool SafeReadUiSelectedCharacterHash(uint32_t& character_hash) noexcept;
