@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { CHARACTERS, type CharacterOption, type ConnectionInfo, type Dashboard, type GameProcess, type InventoryItem, type Language, type PresetApplySummary, type PresetDocument, type SigilPreset, type SlotCountRequestResult } from "./types";
+import { CHARACTERS, DJEETA_CHARACTER_HASH, GRAN_CHARACTER_HASH, type CharacterOption, type ConnectionInfo, type Dashboard, type GameProcess, type InventoryItem, type Language, type PresetApplySummary, type PresetDocument, type SigilPreset, type SlotCountRequestResult } from "./types";
 
 export interface StandaloneApi {
   listGameProcesses(): Promise<GameProcess[]>;
@@ -35,10 +35,11 @@ async function invokeCommand<T>(command: string, args?: Record<string, unknown>)
   return invoke<T>(command, args);
 }
 
-const captainHash = CHARACTERS[0].hash;
-const katalinaHash = CHARACTERS[1].hash;
-const rackamHash = CHARACTERS[2].hash;
-const ioHash = CHARACTERS[3].hash;
+const granHash = GRAN_CHARACTER_HASH;
+const djeetaHash = DJEETA_CHARACTER_HASH;
+const katalinaHash = 0x18e2f9f9;
+const rackamHash = 0x079df0cc;
+const ioHash = 0x4d0a60c3;
 
 interface MockState {
   connectedProcess?: GameProcess;
@@ -49,6 +50,7 @@ interface MockState {
   inventoryRefreshFailuresRemaining: number;
   inventoryRefreshCount: number;
   gameDataReady: boolean;
+  currentCharacterHash: number;
   virtualSlotCount: number;
   pendingVirtualSlotCount: number;
   selection: Map<number, number[]>;
@@ -84,10 +86,10 @@ function createMockInventory(): InventoryItem[] {
     number,
     number,
   ]> = [
-    ["War Elemental +", 1001, true, captainHash, 0, 0, 0],
+    ["War Elemental +", 1001, true, granHash, 0, 0, 0],
     ["Supplemental Damage III", 1002, false, 0, 0, katalinaHash, 2],
     ["Critical Hit V", 1003, false, 0, 0, 0, 0],
-    ["Damage Cap V", 1004, false, 0, 0, captainHash, 0],
+    ["Damage Cap V", 1004, false, 0, 0, granHash, 0],
     ["Stamina V", 1005, false, 0, 0, 0, 0],
     ["Combo Booster IV", 1006, false, 0, 0, 0, 0],
     ["Linked Together III", 1007, false, 0, 0, 0, 0],
@@ -123,13 +125,13 @@ function createMockPresets(): SigilPreset[] {
     {
       id: "preset-captain-raid",
       name: "Raid / Damage",
-      character_hash: captainHash,
+      character_hash: granHash,
       slots: [5003, 5004, 5005, 5006, 5007, 5014, 0, 0, ...Array(16).fill(0)],
     },
     {
       id: "preset-captain-safe",
       name: "Safe clear",
-      character_hash: captainHash,
+      character_hash: granHash,
       slots: [5001, 5008, 5009, 5010, 5011, 5012, 0, 0, ...Array(16).fill(0)],
     },
     {
@@ -151,7 +153,8 @@ function createMockState(): MockState {
   const inventory = createMockInventory();
   const presets = createMockPresets();
   const selection = new Map<number, number[]>([
-    [captainHash, [5003, 5004, 5005, 5006, 5007, 5014, 0, 0, ...Array(16).fill(0)]],
+    [granHash, [5003, 5004, 5005, 5006, 5007, 5014, 0, 0, ...Array(16).fill(0)]],
+    [djeetaHash, Array(24).fill(0)],
     [katalinaHash, [5002, 5016, 0, 0, 0, 0, 0, 0, ...Array(16).fill(0)]],
     [rackamHash, [5009, 5013, 5015, 5006, 0, 0, 0, 0, ...Array(16).fill(0)]],
   ]);
@@ -163,6 +166,7 @@ function createMockState(): MockState {
     inventoryRefreshFailuresRemaining: 0,
     inventoryRefreshCount: 0,
     gameDataReady: true,
+    currentCharacterHash: granHash,
     virtualSlotCount: 8,
     pendingVirtualSlotCount: 0,
     selection,
@@ -216,8 +220,8 @@ function mockDashboard(): Dashboard {
       ? "Ready. Inventory changes apply after the next safe rebuild."
       : "The game is currently in a read-only state.",
     runtime_message_is_error: false,
-    effective_character_hash: captainHash,
-    ui_selected_character_hash: captainHash,
+    effective_character_hash: mockState.currentCharacterHash,
+    ui_selected_character_hash: mockState.currentCharacterHash,
     edit_allowed: mockState.editAllowed,
     language: mockState.language,
     inventory_revision: mockState.inventoryRevision,
@@ -488,6 +492,9 @@ export const mockControls = {
   },
   setGameDataReady(gameDataReady: boolean): void {
     mockState.gameDataReady = gameDataReady;
+  },
+  setCurrentCharacterHash(characterHash: number): void {
+    mockState.currentCharacterHash = characterHash;
   },
   getInventoryRefreshCount(): number {
     return mockState.inventoryRefreshCount;

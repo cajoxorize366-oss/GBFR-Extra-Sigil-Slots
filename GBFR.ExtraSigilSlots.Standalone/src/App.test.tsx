@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "./App";
 import { mockControls } from "./api";
+import { DJEETA_CHARACTER_HASH } from "./types";
 
 async function connectToGame(): Promise<ReturnType<typeof userEvent.setup>> {
   const user = userEvent.setup();
@@ -97,6 +98,16 @@ describe("Standalone workbench", () => {
     expect(screen.getByText("虚拟扩展槽")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "槽位选择" })).toBeInTheDocument();
     expect(screen.getByText("已扫描 20 个因子")).toBeInTheDocument();
+  });
+
+  it("renders Djeeta separately when the native dashboard reports her hash", async () => {
+    mockControls.setCurrentCharacterHash(DJEETA_CHARACTER_HASH);
+    render(<App />);
+    const user = await connectToGame();
+
+    expect(screen.getByText("姬塔")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "English" }));
+    await waitFor(() => expect(screen.getByText("Djeeta")).toBeInTheDocument());
   });
 
   it("releases the connection when disconnecting", async () => {

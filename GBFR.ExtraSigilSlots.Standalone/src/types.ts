@@ -113,8 +113,12 @@ export interface CharacterOption {
   en: string;
 }
 
+export const GRAN_CHARACTER_HASH = 0x2a26b1b2;
+export const DJEETA_CHARACTER_HASH = 0xa4acba76;
+
 export const CHARACTERS: CharacterOption[] = [
-  { hash: 0x2a26b1b2, zh: "主角（格兰/姬塔）", en: "Captain (Gran/Djeeta)" },
+  { hash: GRAN_CHARACTER_HASH, zh: "古兰", en: "Gran" },
+  { hash: DJEETA_CHARACTER_HASH, zh: "姬塔", en: "Djeeta" },
   { hash: 0x18e2f9f9, zh: "卡塔莉娜", en: "Katalina" },
   { hash: 0x079df0cc, zh: "拉卡姆", en: "Rackam" },
   { hash: 0x4d0a60c3, zh: "伊欧", en: "Io" },
