@@ -116,6 +116,16 @@ export interface CharacterOption {
 export const GRAN_CHARACTER_HASH = 0x2a26b1b2;
 export const DJEETA_CHARACTER_HASH = 0xa4acba76;
 
+function isCaptainCharacterHash(characterHash: number): boolean {
+  return characterHash === GRAN_CHARACTER_HASH || characterHash === DJEETA_CHARACTER_HASH;
+}
+
+export function isCharacterCompatible(requiredCharacterHash: number, characterHash: number): boolean {
+  return requiredCharacterHash === 0
+    || requiredCharacterHash === characterHash
+    || (isCaptainCharacterHash(requiredCharacterHash) && isCaptainCharacterHash(characterHash));
+}
+
 export const CHARACTERS: CharacterOption[] = [
   { hash: GRAN_CHARACTER_HASH, zh: "古兰", en: "Gran" },
   { hash: DJEETA_CHARACTER_HASH, zh: "姬塔", en: "Djeeta" },

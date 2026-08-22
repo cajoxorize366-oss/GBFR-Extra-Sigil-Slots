@@ -20,6 +20,19 @@ use tauri::{Manager, State};
 
 const PRESET_FILE_NAME: &str = "GBFR-ExtraSigilSlots.presets.json";
 const AGENT_FILE_NAME: &str = "GBFR.ExtraSigilSlots.Native.dll";
+const GRAN_CHARACTER_HASH: u32 = 0x2A26_B1B2;
+const DJEETA_CHARACTER_HASH: u32 = 0xA4AC_BA76;
+
+fn is_captain_character_hash(character_hash: u32) -> bool {
+    character_hash == GRAN_CHARACTER_HASH || character_hash == DJEETA_CHARACTER_HASH
+}
+
+fn is_character_compatible(required_character_hash: u32, character_hash: u32) -> bool {
+    required_character_hash == 0
+        || required_character_hash == character_hash
+        || (is_captain_character_hash(required_character_hash)
+            && is_captain_character_hash(character_hash))
+}
 
 struct ConnectedGame {
     info: ConnectionInfo,
@@ -232,7 +245,7 @@ fn assign_inventory_sigil(
             "The selected sigil is equipped in a body slot and cannot be moved externally.",
         ));
     }
-    if item.required_character_hash != 0 && item.required_character_hash != character_hash {
+    if !is_character_compatible(item.required_character_hash, character_hash) {
         return Ok(assign_failure(
             "The selected sigil is restricted to another character.",
         ));
@@ -771,4 +784,20 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running GBFR Extra Sigil Slots Standalone");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shares_captain_sigil_compatibility() {
+        assert!(is_character_compatible(0, 0xA4AC_BA76));
+        assert!(is_character_compatible(0x2A26_B1B2, 0x2A26_B1B2));
+        assert!(is_character_compatible(0x2A26_B1B2, 0xA4AC_BA76));
+        assert!(is_character_compatible(0xA4AC_BA76, 0x2A26_B1B2));
+        assert!(is_character_compatible(0xA4AC_BA76, 0xA4AC_BA76));
+        assert!(!is_character_compatible(0x2A26_B1B2, 0x18E2_F9F9));
+        assert!(!is_character_compatible(0x18E2_F9F9, 0xA4AC_BA76));
+    }
 }

@@ -88,7 +88,7 @@ function createMockInventory(): InventoryItem[] {
   ]> = [
     ["War Elemental +", 1001, true, granHash, 0, 0, 0],
     ["Supplemental Damage III", 1002, false, 0, 0, katalinaHash, 2],
-    ["Critical Hit V", 1003, false, 0, 0, 0, 0],
+    ["Critical Hit V", 1003, false, 0, granHash, 0, 0],
     ["Damage Cap V", 1004, false, 0, 0, granHash, 0],
     ["Stamina V", 1005, false, 0, 0, 0, 0],
     ["Combo Booster IV", 1006, false, 0, 0, 0, 0],

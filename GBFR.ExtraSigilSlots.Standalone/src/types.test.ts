@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CHARACTERS, characterName, getCharacter } from "./types";
+import { CHARACTERS, characterName, getCharacter, isCharacterCompatible } from "./types";
 
 describe("standalone character identities", () => {
   it("keeps Gran and Djeeta as distinct captain hashes", () => {
@@ -18,5 +18,15 @@ describe("standalone character identities", () => {
     });
     expect(characterName(0x2a26b1b2, "zh-CN")).toBe("古兰");
     expect(characterName(0xa4acba76, "en")).toBe("Djeeta");
+  });
+
+  it("shares captain sigil compatibility without merging preset identities", () => {
+    expect(isCharacterCompatible(0, 0xa4acba76)).toBe(true);
+    expect(isCharacterCompatible(0x2a26b1b2, 0x2a26b1b2)).toBe(true);
+    expect(isCharacterCompatible(0x2a26b1b2, 0xa4acba76)).toBe(true);
+    expect(isCharacterCompatible(0xa4acba76, 0x2a26b1b2)).toBe(true);
+    expect(isCharacterCompatible(0xa4acba76, 0xa4acba76)).toBe(true);
+    expect(isCharacterCompatible(0x2a26b1b2, 0x18e2f9f9)).toBe(false);
+    expect(isCharacterCompatible(0x18e2f9f9, 0xa4acba76)).toBe(false);
   });
 });

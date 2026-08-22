@@ -106,6 +106,8 @@ describe("Standalone workbench", () => {
     const user = await connectToGame();
 
     expect(screen.getByText("姬塔")).toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: "选择因子" })[0]);
+    expect(screen.getByText("Critical Hit V")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "English" }));
     await waitFor(() => expect(screen.getByText("Djeeta")).toBeInTheDocument());
   });

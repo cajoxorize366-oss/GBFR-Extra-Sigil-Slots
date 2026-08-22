@@ -23,6 +23,7 @@ import { api, isTauriRuntime, mockControls } from "./api";
 import {
   CHARACTERS,
   characterName,
+  isCharacterCompatible,
   type Dashboard,
   type GameProcess,
   type InventoryFilter,
@@ -681,7 +682,7 @@ function App() {
   const filteredInventory = useMemo(() => {
     const query = inventorySearch.trim().toLowerCase();
     return inventory.filter((item) => {
-      if (item.required_character_hash !== 0 && item.required_character_hash !== currentCharacterHash) return false;
+      if (!isCharacterCompatible(item.required_character_hash, currentCharacterHash)) return false;
       const usedByBody = item.equipped;
       const usedByExtension = item.virtual_owner_character_hash !== 0;
       const matchesFilter = inventoryFilter === "all"
