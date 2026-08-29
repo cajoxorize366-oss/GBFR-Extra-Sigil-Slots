@@ -261,6 +261,13 @@ void Dispatch(
    }
    case GBFR20_STANDALONE_REQUEST_APPLY:
    {
+      if (payload.empty())
+      {
+         // The external controller polls with an empty apply request to run
+         // the native upkeep tick (including gem-protection reconciliation).
+         GBFR20_Tick();
+         return;
+      }
       uint32_t character_hash = 0;
       if (!ReadValue(payload, offset, character_hash) || offset != payload.size())
       {

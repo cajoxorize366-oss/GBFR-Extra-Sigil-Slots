@@ -81,6 +81,7 @@ struct InventoryItem {
     label: String,
     searchable: String,
     equipped: bool,
+    protected_locked: bool,
     required_character_hash: u32,
     virtual_owner_character_hash: u32,
     virtual_owner_slot: i32,
@@ -567,8 +568,15 @@ fn with_connection<T>(
     operation(connection)
 }
 
+#[tauri::command]
+fn native_tick(state: State<'_, BackendState>) -> Result<(), String> {
+    let _operation = lock_operation(&state)?;
+    with_connection(&state, |connection| connection.pipe.tick())
+}
+
 fn dashboard_locked(state: &State<'_, BackendState>) -> Result<Dashboard, String> {
     with_connection(state, |connection| {
+        connection.pipe.tick()?;
         let response = connection.pipe.get_state()?;
         if response.state.shutting_down {
             return Err("The connected game process is shutting down.".to_string());
@@ -604,6 +612,7 @@ fn inventory_item(item: NativeInventoryItem, presets: &PresetDocument) -> Invent
         gem: item.gem,
         label: item.label,
         equipped: item.equipped,
+        protected_locked: item.protected_locked,
         required_character_hash: item.required_character_hash,
         virtual_owner_character_hash: item.virtual_owner_character_hash,
         virtual_owner_slot: item.virtual_owner_slot,
@@ -765,6 +774,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             list_game_processes,
+            native_tick,
             connect_game,
             disconnect_game,
             get_dashboard,

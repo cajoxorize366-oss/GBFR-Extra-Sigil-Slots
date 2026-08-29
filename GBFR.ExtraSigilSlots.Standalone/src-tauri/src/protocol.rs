@@ -71,6 +71,7 @@ pub struct GemData {
 pub struct NativeInventoryItem {
     pub gem: GemData,
     pub equipped: bool,
+    pub protected_locked: bool,
     pub required_character_hash: u32,
     pub virtual_owner_character_hash: u32,
     pub virtual_owner_slot: i32,
@@ -130,6 +131,9 @@ impl<T: Read + Write> ProtocolClient<T> {
 
     pub fn get_state(&mut self) -> Result<StateResponse, String> {
         let payload = self.request(COMMAND_GET_STATE, &[])?;
+        // The Standalone controller polls state on the render thread while the
+        // picker is open. The caller is expected to drive the native upkeep
+        // tick alongside its state polling through ProtocolClient::tick().
         if payload.len() < 288 {
             return self.fail(format!(
                 "GetState response is too short: {} bytes.",
@@ -209,6 +213,7 @@ impl<T: Read + Write> ProtocolClient<T> {
                 flags: reader.u32()?,
             };
             let equipped = reader.u32()? != 0;
+            let protected_locked = reader.u32()? != 0;
             let required_character_hash = reader.u32()?;
             let virtual_owner_character_hash = reader.u32()?;
             let virtual_owner_slot = reader.i32()?;
@@ -220,6 +225,7 @@ impl<T: Read + Write> ProtocolClient<T> {
             items.push(NativeInventoryItem {
                 gem,
                 equipped,
+                protected_locked,
                 required_character_hash,
                 virtual_owner_character_hash,
                 virtual_owner_slot,
@@ -300,6 +306,15 @@ impl<T: Read + Write> ProtocolClient<T> {
         let generation = reader.u32()?;
         reader.finish()?;
         Ok(generation)
+    }
+
+    #[allow(dead_code)]
+    pub fn tick(&mut self) -> Result<(), String> {
+        let response = self.request(COMMAND_REQUEST_APPLY, &[])?;
+        if !response.is_empty() {
+            return self.fail("Tick returned an unexpected payload.".to_string());
+        }
+        Ok(())
     }
 
     pub fn set_language(&mut self, language: i32) -> Result<(), String> {
@@ -556,6 +571,63 @@ mod tests {
         assert_eq!(snapshot.state.virtual_slot_capacity, 24);
         assert_eq!(snapshot.pending_virtual_slot_count, 12);
         assert_eq!(snapshot.runtime_message, "hooks ready");
+    }
+
+    #[test]
+    fn tick_accepts_an_empty_request_apply_payload() {
+        let response = encode_header(&FrameHeader {
+            magic: FRAME_MAGIC,
+            protocol_version: PROTOCOL_VERSION,
+            command: COMMAND_REQUEST_APPLY,
+            request_id: 1,
+            status: 0,
+            payload_size: 0,
+        })
+        .to_vec();
+        let mut client = ProtocolClient::new(ScriptedStream::new(response));
+        client.tick().unwrap();
+        assert!(client.tick().is_err()); // the scripted stream is exhausted
+    }
+
+    #[test]
+    fn inventory_frame_includes_the_protected_lock_flag() {
+        let mut response = Vec::new();
+        response.extend_from_slice(&encode_header(&FrameHeader {
+            magic: FRAME_MAGIC,
+            protocol_version: PROTOCOL_VERSION,
+            command: COMMAND_REFRESH_INVENTORY,
+            request_id: 1,
+            status: 0,
+            payload_size: 4 + 0x24 + (4 * 6) + 5,
+        }));
+        response.extend_from_slice(&1_u32.to_le_bytes());
+        // gem: trait1, trait1_level, trait2, trait2_level, gem_id, worn_by,
+        // sigil_level, slot_id, flags
+        response.extend_from_slice(&0x1010_2020_u32.to_le_bytes());
+        response.extend_from_slice(&3_i32.to_le_bytes());
+        response.extend_from_slice(&0x3030_4040_u32.to_le_bytes());
+        response.extend_from_slice(&2_i32.to_le_bytes());
+        response.extend_from_slice(&0x5050_6060_u32.to_le_bytes());
+        response.extend_from_slice(&0x887a_e0b0_u32.to_le_bytes());
+        response.extend_from_slice(&15_i32.to_le_bytes());
+        response.extend_from_slice(&0x1234_u32.to_le_bytes());
+        response.extend_from_slice(&1_u32.to_le_bytes());
+        // equipped, protected_locked, required, virtual owner, virtual slot
+        response.extend_from_slice(&0_u32.to_le_bytes());
+        response.extend_from_slice(&1_u32.to_le_bytes());
+        response.extend_from_slice(&0_u32.to_le_bytes());
+        response.extend_from_slice(&0_u32.to_le_bytes());
+        response.extend_from_slice(&(-1_i32).to_le_bytes());
+        response.extend_from_slice(&5_u32.to_le_bytes());
+        response.extend_from_slice(b"hello");
+
+        let mut client = ProtocolClient::new(ScriptedStream::new(response));
+        let items = client.refresh_inventory().unwrap();
+        assert_eq!(items.len(), 1);
+        assert!(!items[0].equipped);
+        assert!(items[0].protected_locked);
+        assert_eq!(items[0].label, "hello");
+        assert_eq!(items[0].gem.flags, 1);
     }
 
     #[test]

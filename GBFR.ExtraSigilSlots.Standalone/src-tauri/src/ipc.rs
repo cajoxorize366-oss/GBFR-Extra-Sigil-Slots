@@ -55,6 +55,10 @@ impl PipeClient {
         self.client.hello()
     }
 
+    pub fn tick(&mut self) -> Result<(), String> {
+        self.client.tick()
+    }
+
     pub fn get_state(&mut self) -> Result<StateResponse, String> {
         self.client.get_state()
     }

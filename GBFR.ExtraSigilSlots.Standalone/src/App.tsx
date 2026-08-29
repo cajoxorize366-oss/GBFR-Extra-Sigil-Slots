@@ -288,6 +288,7 @@ function App() {
     const timer = window.setInterval(() => {
       if (polling) return;
       polling = true;
+      void api.nativeTick().catch(() => undefined);
       void api.getDashboard().then(async (nextDashboard) => {
         if (!active) return;
         const nextCharacterHash = nextDashboard.ui_selected_character_hash || nextDashboard.effective_character_hash || defaultCharacterHash;
@@ -814,6 +815,9 @@ function App() {
               : item.virtual_owner_character_hash !== 0
                 ? language === "en" ? `Extension slot ${item.virtual_owner_slot + 13} · ${owner}` : `扩展槽 ${item.virtual_owner_slot + 13} · ${owner}`
                 : language === "en" ? "Unused" : "未使用";
+            const locked = item.protected_locked
+              ? language === "en" ? " · Locked" : " · 已锁定"
+              : "";
             const presetReferences = presetReferenceNames(item);
             return (
               <button type="button" className="inventory-row" key={item.gem.slot_id} role="option" onClick={() => handleInventoryPick(item)}>
@@ -823,7 +827,7 @@ function App() {
                   <span>{language === "en" ? `Inventory slot ${item.gem.slot_id}` : `库存槽 ${item.gem.slot_id}`}</span>
                 </span>
                 <span className="inventory-meta">
-                  <span className={item.equipped || item.virtual_owner_character_hash !== 0 ? "meta-occupied" : "meta-free"}>{usage}</span>
+                  <span className={item.equipped || item.virtual_owner_character_hash !== 0 ? "meta-occupied" : "meta-free"}>{usage}{locked}</span>
                   {presetReferences && <span>{language === "en" ? `Presets · ${presetReferences}` : `预设 · ${presetReferences}`}</span>}
                 </span>
                 <ChevronRight size={16} className="inventory-chevron" />

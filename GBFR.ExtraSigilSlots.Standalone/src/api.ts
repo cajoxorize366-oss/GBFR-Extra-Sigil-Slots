@@ -3,6 +3,7 @@ import { CHARACTERS, DJEETA_CHARACTER_HASH, GRAN_CHARACTER_HASH, type CharacterO
 
 export interface StandaloneApi {
   listGameProcesses(): Promise<GameProcess[]>;
+  nativeTick(): Promise<void>;
   connectGame(pid: number): Promise<ConnectionInfo>;
   disconnectGame(): Promise<void>;
   getDashboard(): Promise<Dashboard>;
@@ -76,6 +77,14 @@ function makeGem(slotId: number, gemId: number, level: number): InventoryItem["g
   };
 }
 
+function updateMockGemFlags(inventory: InventoryItem[]): void {
+  // Keep the mock gem.flags mirroring the protected_locked field so tests can
+  // assert the same flag the Native Agent publishes.
+  for (const item of inventory) {
+    item.gem.flags = (item.gem.flags & ~1) | (item.protected_locked ? 1 : 0);
+  }
+}
+
 function createMockInventory(): InventoryItem[] {
   const definitions: Array<[
     string,
@@ -113,6 +122,7 @@ function createMockInventory(): InventoryItem[] {
     label,
     searchable: label.toLowerCase(),
     equipped,
+    protected_locked: false,
     required_character_hash: requiredCharacterHash,
     virtual_owner_character_hash: virtualOwner,
     virtual_owner_slot: virtualSlot,
@@ -158,6 +168,11 @@ function createMockState(): MockState {
     [katalinaHash, [5002, 5016, 0, 0, 0, 0, 0, 0, ...Array(16).fill(0)]],
     [rackamHash, [5009, 5013, 5015, 5006, 0, 0, 0, 0, ...Array(16).fill(0)]],
   ]);
+  for (const item of inventory) {
+    item.protected_locked = selection.has(item.virtual_owner_character_hash)
+      && selection.get(item.virtual_owner_character_hash)?.includes(item.gem.slot_id) === true;
+  }
+  updateMockGemFlags(inventory);
   return {
     language: "zh-CN",
     editAllowed: true,
@@ -278,10 +293,13 @@ function mockAssign(characterHash: number, virtualSlot: number, inventorySlotId:
   mockState.selection.set(characterHash, selection);
   item.virtual_owner_character_hash = characterHash;
   item.virtual_owner_slot = virtualSlot;
+  item.protected_locked = true;
+  updateMockGemFlags(mockState.inventory);
   for (const candidate of mockState.inventory) {
     if (candidate.gem.slot_id !== inventorySlotId && candidate.virtual_owner_character_hash === characterHash && candidate.virtual_owner_slot === virtualSlot) {
       candidate.virtual_owner_character_hash = 0;
       candidate.virtual_owner_slot = 0;
+      candidate.protected_locked = false;
     }
   }
   mockState.inventoryRevision += 1;
@@ -294,6 +312,7 @@ function mockAssign(characterHash: number, virtualSlot: number, inventorySlotId:
 }
 
 const mockApi: StandaloneApi = {
+  nativeTick: () => Promise.resolve(),
   async listGameProcesses() {
     return clone(mockProcessList());
   },
@@ -342,7 +361,9 @@ const mockApi: StandaloneApi = {
     if (item) {
       item.virtual_owner_character_hash = 0;
       item.virtual_owner_slot = 0;
+      item.protected_locked = false;
     }
+    updateMockGemFlags(mockState.inventory);
     mockState.inventoryRevision += 1;
     return { success: true, message: "Slot cleared.", affected_preset_names: [] };
   },
@@ -454,6 +475,7 @@ const mockApi: StandaloneApi = {
 };
 
 export const api: StandaloneApi = {
+  nativeTick: () => (isTauriRuntime() ? invokeCommand<void>("native_tick") : mockApi.nativeTick()),
   listGameProcesses: () => (isTauriRuntime() ? invokeCommand<GameProcess[]>("list_game_processes") : mockApi.listGameProcesses()),
   connectGame: (pid) => (isTauriRuntime() ? invokeCommand<ConnectionInfo>("connect_game", { pid }) : mockApi.connectGame(pid)),
   disconnectGame: () => (isTauriRuntime() ? invokeCommand<void>("disconnect_game") : mockApi.disconnectGame()),

@@ -54,6 +54,7 @@ export interface InventoryItem {
   label: string;
   searchable: string;
   equipped: boolean;
+  protected_locked: boolean;
   required_character_hash: number;
   virtual_owner_character_hash: number;
   virtual_owner_slot: number;

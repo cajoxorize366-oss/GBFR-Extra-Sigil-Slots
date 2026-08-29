@@ -184,7 +184,10 @@ bool RefreshInventorySnapshot()
       SaveCharacterSelection(character_hash);
       ScheduleReconcileApply(character_hash);
    }
-   ScheduleGemProtectionReconcile();
+   // Protect newly selected sigils and release previously selected sigils
+   // before publishing this snapshot, so the external controller immediately
+   // sees the same native locked state the game menus observe.
+   ReconcileGemProtection();
 
    std::vector<InventoryItem> snapshot;
    snapshot.reserve(records.size());
@@ -200,6 +203,7 @@ bool RefreshInventorySnapshot()
       item.gem = gem;
       item.address = record.address;
       item.equipped = gem.worn_by != kUnwornCharacterHash;
+      item.protected_locked = (gem.flags & kGemProtectedFlag) != 0;
       item.required_character_hash = GetRequiredCharacterHash(gem.gem_id);
       if (const auto owner = virtual_owners.find(gem.slot_id); owner != virtual_owners.end())
       {
